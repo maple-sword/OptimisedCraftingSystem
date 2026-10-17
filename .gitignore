@@ -1,0 +1,12 @@
+# 编译产物
+bin/
+obj/
+*.user
+*.suo
+.vs/
+# 游戏内运行时产物（本模组的日志抓取与证据）
+docs/logs/
+# 本地私有引用（游戏 DLL 不随仓库分发）
+lib/
+*.dll
+!dist/*.dll

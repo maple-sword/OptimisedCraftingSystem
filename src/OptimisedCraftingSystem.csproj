@@ -1,0 +1,85 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    OptimisedCraftingSystem.csproj — 合成逻辑增强模组（BetterInventoryLogic 的重写与扩展）。
+    目标：在 BetterInventoryLogic（作者 BalaurBohemianBroken，CC-BY-SA-4.0）的基础上
+          ① 修掉它已知的算法缺陷；② 增加「按性质性价比自动选材」「消耗量(ml/耐久)提示」
+          「合成产物存放/装备地点预测与手动改派」「材料总览 GUI」「堆叠显示」
+          「Shift 查看容器内物品总量」等功能。
+
+    编译（默认按作者本机的游戏路径；别处请覆盖 GameDir）：
+      dotnet build -c Release
+      dotnet build -c Release -p:GameDir="C:\Program Files (x86)\Steam\steamapps\common\Casualties Unknown Demo"
+
+    引用游戏 DLL 一律 Private=false：绝不把游戏程序集复制进输出目录。
+    本工程刻意不引用 Newtonsoft / TMP / UnityEngine.UI：
+      - 语言表注入走 Locale.currentLang.other（Dictionary<string,string>，Assembly-CSharp 内部类型）；
+      - 自建 GUI 用 IMGUI（IMGUIModule）+ 系统字体（TextRenderingModule），
+        避免和 QoL Unknown 等模组争抢 UI 程序集。
+    零 PackageReference + <NuGetAudit>false</NuGetAudit>：避免还原时联网。
+  -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <AssemblyName>OptimisedCraftingSystem</AssemblyName>
+    <RootNamespace>OptimisedCraftingSystem</RootNamespace>
+    <LangVersion>latest</LangVersion>
+    <Version>1.0.0</Version>
+    <!-- 本模组不往存档里写自定义类型，版本号固定只为了让构建产物可复现 -->
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <Nullable>disable</Nullable>
+    <NuGetAudit>false</NuGetAudit>
+    <!-- 公开发布用：不生成 PDB 与调试目录，免得把作者本机的绝对路径写进 DLL -->
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+    <Deterministic>true</Deterministic>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <!-- 游戏安装目录：默认值是开发机的路径，任何人可用 -p:GameDir=... 覆盖 -->
+    <GameDir Condition="'$(GameDir)' == ''">D:\Steam\steamapps\common\Casualties Unknown Demo</GameDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="BepInEx">
+      <HintPath>$(GameDir)\BepInEx\core\BepInEx.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="0Harmony">
+      <HintPath>$(GameDir)\BepInEx\core\0Harmony.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Assembly-CSharp">
+      <HintPath>$(GameDir)\CasualtiesUnknown_Data\Managed\Assembly-CSharp.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine">
+      <HintPath>$(GameDir)\CasualtiesUnknown_Data\Managed\UnityEngine.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>$(GameDir)\CasualtiesUnknown_Data\Managed\UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <!-- KeyCode / Input：自建 GUI 的热键与新键位设置项（SettingKeybind） -->
+    <Reference Include="UnityEngine.InputLegacyModule">
+      <HintPath>$(GameDir)\CasualtiesUnknown_Data\Managed\UnityEngine.InputLegacyModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <!-- Physics2D.OverlapCircleAll：扫描「手边可拾取的地面物品」 -->
+    <Reference Include="UnityEngine.Physics2DModule">
+      <HintPath>$(GameDir)\CasualtiesUnknown_Data\Managed\UnityEngine.Physics2DModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <!-- GUI/GUILayout/GUIStyle：材料总览窗口与合成界面覆盖层 -->
+    <Reference Include="UnityEngine.IMGUIModule">
+      <HintPath>$(GameDir)\CasualtiesUnknown_Data\Managed\UnityEngine.IMGUIModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <!-- Font.CreateDynamicFontFromOSFont / TextAnchor：让 IMGUI 能显示中文 -->
+    <Reference Include="UnityEngine.TextRenderingModule">
+      <HintPath>$(GameDir)\CasualtiesUnknown_Data\Managed\UnityEngine.TextRenderingModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>
