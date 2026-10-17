@@ -440,22 +440,36 @@ namespace OptimisedCraftingSystem.UI
                 GUILayout.Label(label, _label, GUILayout.Width(300f));
 
                 string matName = chosen != null ? CraftText.MaterialLabel(slot, chosen) : "—";
-                // 点材料名展开候选表（与覆盖层同一套状态）；◀/▶ 保留，习惯盲翻时仍可用
-                if (GUILayout.Button(matName + "  (" + cands.Count + ")  ▾", _pickSlot == i ? _tabOn : _button,
-                                     GUILayout.Width(260f)))
-                    TogglePick(i);
+                // 这个槽位只有一种材料能满足时（植物纤维袋只要帆布 + 纤维绳就是典型），候选表里全是
+                // 同类物品，换与不换没有区别：不给 ▾ 入口，也不留 ◀/▶/自动 三个没意义的按钮。
+                bool canPick = CraftSelector.HasMaterialChoice(slot, pool);
+                if (canPick)
+                {
+                    // 点材料名展开候选表（与覆盖层同一套状态）；◀/▶ 保留，习惯盲翻时仍可用
+                    if (GUILayout.Button(matName + "  (" + cands.Count + ")  ▾", _pickSlot == i ? _tabOn : _button,
+                                         GUILayout.Width(260f)))
+                        TogglePick(i);
+                }
+                else
+                {
+                    SuppressPick(recipe.index, i);
+                    GUILayout.Label(matName, _label, GUILayout.Width(260f));
+                }
 
                 string desc = chosen != null ? SafeDescribe(slot, chosen) : string.Empty;
                 GUILayout.Label(desc, _small, GUILayout.Width(200f));
 
-                if (GUILayout.Button("◀", _button, GUILayout.Width(30f)))
-                    CyclePick(recipe, i, pool, -1);
-                if (GUILayout.Button("▶", _button, GUILayout.Width(30f)))
-                    CyclePick(recipe, i, pool, +1);
-                if (GUILayout.Button(Loc.T("ocs.craft.auto"), _button, GUILayout.Width(110f)))
+                if (canPick)
                 {
-                    CraftSession.ClearPick(recipe.index, i);
-                    RefreshPanel();
+                    if (GUILayout.Button("◀", _button, GUILayout.Width(30f)))
+                        CyclePick(recipe, i, pool, -1);
+                    if (GUILayout.Button("▶", _button, GUILayout.Width(30f)))
+                        CyclePick(recipe, i, pool, +1);
+                    if (GUILayout.Button(Loc.T("ocs.craft.auto"), _button, GUILayout.Width(110f)))
+                    {
+                        CraftSession.ClearPick(recipe.index, i);
+                        RefreshPanel();
+                    }
                 }
                 GUILayout.EndHorizontal();
 
@@ -699,10 +713,19 @@ namespace OptimisedCraftingSystem.UI
                                 (QualityLabelText(slot).Length > 0 ? " · " + QualityLabelText(slot) : string.Empty),
                                 _label, GUILayout.Width(190f));
 
-                // 「材料名 ▾」点一下就地摊开候选表（再点收起）——不再用 ◀/▶ 盲翻
+                // 「材料名 ▾」点一下就地摊开候选表（再点收起）——不再用 ◀/▶ 盲翻；
+                // 只有一种材料可用的槽位不给入口（理由见 CraftSelector.HasMaterialChoice）。
                 string pick = chosen != null ? CraftText.MaterialLabel(slot, chosen) : "—";
-                if (GUILayout.Button(pick + "  ▾", _pickSlot == i ? _tabOn : _button, GUILayout.Width(200f)))
-                    TogglePick(i);
+                if (CraftSelector.HasMaterialChoice(slot, pool))
+                {
+                    if (GUILayout.Button(pick + "  ▾", _pickSlot == i ? _tabOn : _button, GUILayout.Width(200f)))
+                        TogglePick(i);
+                }
+                else
+                {
+                    SuppressPick(recipe.index, i);
+                    GUILayout.Label(pick, _label, GUILayout.Width(200f));
+                }
 
                 GUILayout.Label(chosen != null ? SafeDescribe(slot, chosen) : string.Empty, _small, GUILayout.Width(180f));
                 GUILayout.EndHorizontal();
@@ -785,6 +808,20 @@ namespace OptimisedCraftingSystem.UI
                 return SafeContainers(recipe, CraftingScanner.Gather(true)).Count + 1;     // 自动 / 各容器
             }
             catch { return 0; }
+        }
+
+        /// <summary>
+        /// 槽位已经没得选了：把候选表收起来，并把以前留下的手动指定清掉。
+        ///
+        /// 为什么还要清手动指定：玩家可能在这条配方还有两种材料可用时手选过一件，之后材料被用掉，
+        /// 候选里只剩一种 id——此时 ▾ 入口消失，「自动」按钮也跟着消失，手动指定就再也没法取消了。
+        /// ClearPick 会写一条证据日志，所以这里只在确实还有记忆时调用一次，不能每帧调。
+        /// </summary>
+        private static void SuppressPick(int recipeIndex, int slotIndex)
+        {
+            if (_pickSlot == slotIndex) _pickSlot = -1;
+            if (CraftSession.PickMemory.TryGetValue(recipeIndex, out Dictionary<int, int> mem) && mem.ContainsKey(slotIndex))
+                CraftSession.ClearPick(recipeIndex, slotIndex);
         }
 
         /// <summary>展开/收起某个槽位的候选材料表（与存放目标表互斥，屏幕上一次只摊一张）。</summary>

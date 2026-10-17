@@ -93,6 +93,28 @@ namespace OptimisedCraftingSystem
             return list;
         }
 
+        /// <summary>
+        /// 这个槽位是否真的「有得选」：候选里出现了第二种物品（按 id 区分）才算有。
+        ///
+        /// 为什么按 id 而不是按件数：同一个 id 的多件材料（比如两卷帆布）换哪件都不改变配方结果，
+        /// 玩家眼里就是"没得换"。典型例子是植物纤维袋——它只要帆布 + 纤维绳各一件，两个槽位
+        /// 各只有一种材料能满足，再摊一张全是同类物品的候选表只会挡住画面。
+        ///
+        /// 只扫一遍池子、不建列表：这个判定每帧对每个槽位都要问一次。
+        /// </summary>
+        internal static bool HasMaterialChoice(RecipeItem slot, List<Item> pool)
+        {
+            if (slot == null || pool == null) return false;
+            string firstId = null;
+            foreach (Item it in pool)
+            {
+                if (!Usable(slot, it)) continue;
+                if (firstId == null) { firstId = it.id; continue; }
+                if (firstId != it.id) return true;   // string 的 != 是逐字符比较，正是这里要的
+            }
+            return false;
+        }
+
         // ————————————————————————————————————————————————————————————
         // 整个配方的分配
         // ————————————————————————————————————————————————————————————
