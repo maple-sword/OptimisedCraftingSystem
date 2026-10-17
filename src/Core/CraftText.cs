@@ -130,6 +130,19 @@ namespace OptimisedCraftingSystem
         }
 
         /// <summary>
+        /// 候选表里一行材料显示什么名字。液体槽位**优先写这一行倒的是哪一层液体**：
+        /// 一个混装瓶会摊成「牛奶（盒装牛奶）」「过滤水（盒装牛奶）」两行，玩家选的就是"倒哪层"。
+        /// </summary>
+        internal static string ChoiceLabel(RecipeItem slot, Item item, string liquidId)
+        {
+            if (slot == null || item == null || string.IsNullOrEmpty(liquidId) || !slot.isLiquid)
+                return MaterialLabel(slot, item);
+            string name = CraftingScanner.NameOf(item);
+            string liquid = LiquidName(liquidId);
+            return string.IsNullOrEmpty(liquid) ? name : liquid + "（" + name + "）";
+        }
+
+        /// <summary>
         /// 容器在列表里的显示名：装着液体时把**里面的液体**带上（`水壶（生化流体 500 mL）`）。
         ///
         /// 两个同名水壶可能装着完全不同的液体/余量，材料总览按 id 合并成一行就分不出来了
@@ -251,11 +264,12 @@ namespace OptimisedCraftingSystem
                     Item it = child.GetComponent<Item>();
                     if (it == null) continue;
 
-                    // 装着液体的容器**不按 id 合并**：两个水壶的液体/余量往往不同，合并成一行就分不清谁是谁了
-                    // （玩家反馈「不要堆叠液体容器」）。只有液体完全相同（同 id、同量）才并成「×N」。
+                    // 装着液体的容器**从不按 id 合并**（玩家反馈「液体容器仍然是堆叠显示」）：
+                    // 就算两瓶内容物一模一样，它们也是两件独立的东西，合并成「水壶（汤 300 mL） ×2」
+                    // 只会让玩家分不出合成时动的是哪一瓶。用实例键强制分行。
                     bool liquid = CraftingScanner.HoldsLiquid(it);
                     string key = liquid
-                        ? "liq:" + it.id + ":" + PlacementPlanner.ContentsText(it.GetComponent<WaterContainerItem>())
+                        ? "inst:" + it.GetInstanceID()
                         : (it.id ?? "?");
                     float w = CraftingScanner.WeightOf(it.Stats, it.condition);
 

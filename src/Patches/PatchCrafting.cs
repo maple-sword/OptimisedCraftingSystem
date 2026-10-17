@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using HarmonyLib;
+using UnityEngine;
 
 namespace OptimisedCraftingSystem
 {
@@ -120,10 +121,60 @@ namespace OptimisedCraftingSystem
     {
         [HarmonyPrefix]
         [HarmonyPriority(Priority.Low)]
-        private static void Prefix(RecipeItem __instance, Item item)
+        private static bool Prefix(RecipeItem __instance, Item item)
         {
             try { ContainerRescue.BeforeConsume(__instance, item); }
             catch (System.Exception e) { Plugin.Log?.LogWarning("[Rescue] 消耗前处理失败：" + e.Message); }
+
+            try
+            {
+                // 玩家指定了倒哪一层液体时，这一步由我们来做（原版只会倒 stack 里的第一层）
+                if (ConsumeChosenLiquid(__instance, item)) return false;
+            }
+            catch (System.Exception e) { Plugin.Log?.LogWarning("[Liquid] 按指定层倒液体失败，退回原版：" + e.Message); }
+
+            return true;
+        }
+
+        /// <summary>
+        /// 玩家在候选表里指定了「倒哪一层液体」时，按他的选择倒，并跳过原版。
+        ///
+        /// 原版 `RecipeItem.UseItem` 的液体分支只做一件事：按 `WaterContainerItem.stack` 的顺序
+        /// 取**第一个**满足性质的层，`max = Mathf.Lerp(0f, 层量, 性质需要量 / 该层满足量)`，
+        /// 然后 `Drain(CalculateDrainSingleLiquid(id, max))`（液体分支本身不销毁瓶子）。
+        /// 这里照同样的算式，只把"哪一层"换成玩家选的那层；指定层不满足性质就返回 false，
+        /// 交回原版处理 —— 候选表只列出满足性质的层，所以正常操作下不会走到这条回落。
+        /// </summary>
+        private static bool ConsumeChosenLiquid(RecipeItem slot, Item item)
+        {
+            if (slot == null || item == null) return false;
+            if (!slot.isLiquid || slot.specific || slot.quality == null) return false;
+
+            string wanted = CraftSession.GetLiquidPick(slot);
+            if (string.IsNullOrEmpty(wanted)) return false;
+
+            WaterContainerItem wc = item.GetComponent<WaterContainerItem>();
+            if (wc == null || wc.stack == null) return false;
+
+            for (int i = 0; i < wc.stack.Count; i++)
+            {
+                LiquidStack st = wc.stack[i];
+                if (st == null || st.liquidId != wanted || st.amount <= 0f) continue;
+                if (!Liquids.Registry.TryGetValue(wanted, out LiquidType type) || type == null) return false;
+
+                CraftingQuality matched = Item.GetQualityThatMeetsCriteria(slot.quality, type.GetScaledQualities(st.amount));
+                if (matched == null || matched.amount <= 0.0001f) return false;
+
+                float max = Mathf.Lerp(0f, st.amount, slot.quality.amount / matched.amount);
+                wc.Drain(wc.CalculateDrainSingleLiquid(wanted, max));
+
+                // 证据日志：原版没有"选液体层"的入口，这一行让"真的倒的是玩家指定那层"可被日志核对
+                Plugin.Evidence("liqpick:" + wanted + ":" + item.id,
+                    "液体层：按玩家指定从「" + CraftingScanner.NameOf(item) + "」倒出 " +
+                    CraftText.LiquidName(wanted) + "（原版会按 stack 顺序先倒第一层）");
+                return true;
+            }
+            return false;
         }
     }
 }

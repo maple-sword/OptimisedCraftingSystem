@@ -16,7 +16,7 @@ It started life as **BetterInventoryLogic** (by BalaurBohemianBroken, CC BY 4.0)
 | | Original BetterInventoryLogic | This mod |
 |---|---|---|
 | **Picking** | seven preference toggles in one comparison chain, sorted and then **the last entry wins**; no cost model at all, so ties are effectively random | computes the **real cost** of this craft (value destroyed, durability, where the item lives, whether another recipe needs it): if the gap is >25% the cheaper option wins outright, and only within 25% do the preference toggles decide. Also **protects scarce items** — the only tool that provides a required quality is never burned as an ingredient |
-| **Consumption** | none — the recipe tooltip shows tick/cross icons | the crafting screen gains a **Needs** block: `120 mL` / `whole item` / `durability −12% (8 uses left)` per slot, and liquid slots name **the exact liquid layer that will be poured, with its container** |
+| **Consumption** | none — the recipe tooltip shows tick/cross icons | the crafting screen gains a **Needs** block: `120 mL` / `whole item` / `durability −12% (8 uses left)` per slot, and liquid slots name **the exact liquid layer that will be poured, with its container** — and on a mixed bottle you can pick which layer to drain |
 | **Storage** | a hard-coded English `Stored: …` line **after** crafting — and it reports success even when `LoadItem` silently failed | a prediction **before** crafting (`will be stored in: canvas backpack (3.2 kg free)` / `right hand` / `on the ground`), and after loading every item is **verified** (parent transform, slot actually taken); if verification fails it falls back to vanilla instead of lying |
 | **Overriding** | nothing (the author left "in the future" TODOs in the source) | click an ingredient or the *will be stored in* row to expand a candidate list and pick one — first row is always *Automatic (recommended)*; picks are remembered and impossible picks are skipped. **Slots with only one possible item get no picker at all** (several copies of the same item do not count as a choice), so you never see a list with a single meaningful entry |
 | **Liquid routing** | only bottles that can take the whole amount in one go, otherwise a makeshift bottle | three tiers: fits in one bottle → **split across bottles** by free space → only then a makeshift bottle. The candidate list shows **every bottle** (carried, inside containers, even on the floor) with its contents and free space; rows the automatic planner won't use are listed too, greyed out with the reason |
@@ -55,8 +55,9 @@ The original mod's 28 defects are all fixed as well — the usual suspects: comp
 
 - Three-tier routing (one bottle → split across bottles → makeshift bottle).
 - Candidate list with every bottle (floor included); unusable ones greyed out with the reason (mixing / no empty bottles / capacity / favourited).
+- **Pick which layer of a mixed bottle gets poured**: the list expands one row per layer (`Milk (Milk Carton)` and `Filtered Water (Milk Carton)` side by side); preview and the actual craft both follow your pick, the other layer stays in the bottle. Weaker layers cost more millilitres per point of the requirement, and the row says how much will be taken.
 - **Same liquid prefers the makeshift bottle** — that portion is doomed to vanish in 5 minutes anyway.
-- **Liquid containers are never stacked together** — only bottles with identical contents merge into `×2`.
+- **Liquid containers are never stacked together** — every bottle with liquid gets its own row (never merged into `×2`).
 - **Favourited containers never receive liquid** (planner, manual pick and fallback all blocked).
 - Liquid inside a bottle used as an ingredient is rescued into a makeshift bottle instead of vanishing.
 

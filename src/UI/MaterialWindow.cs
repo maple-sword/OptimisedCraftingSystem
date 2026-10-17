@@ -305,18 +305,14 @@ namespace OptimisedCraftingSystem.UI
 
         /// <summary>
         /// 列表行的合并键。普通材料按 id 合并（受「合成界面堆叠显示相同材料」控制），
-        /// **装着液体的容器改成按「物品 id + 液体组成」合并**：两个水壶装不同液体或不同余量时不能并成一行，
-        /// 否则玩家分不出哪行是哪个瓶子（玩家反馈「不要堆叠液体容器」）；液体完全相同的仍可并成「×N」。
+        /// **装着液体的容器一律按实例分开、永不合并**：两瓶就算内容物一模一样也是两件东西，
+        /// 合成时会挑其中一瓶倒出去，并成「水壶（汤 300 mL） ×2」玩家就分不出动的是哪一瓶
+        /// （玩家反馈「液体容器仍然是堆叠显示」）。
         /// </summary>
         private static string RowKey(Item it)
         {
             if (!ModSettings.StackItems) return "inst:" + it.GetInstanceID();
-
-            if (CraftingScanner.HoldsLiquid(it))
-            {
-                WaterContainerItem wc = it.GetComponent<WaterContainerItem>();
-                return "liq:" + it.id + ":" + PlacementPlanner.ContentsText(wc);
-            }
+            if (CraftingScanner.HoldsLiquid(it)) return "inst:" + it.GetInstanceID();
             return "id:" + it.id;
         }
 
@@ -442,17 +438,24 @@ namespace OptimisedCraftingSystem.UI
                 string matName = chosen != null ? CraftText.MaterialLabel(slot, chosen) : "—";
                 // 这个槽位只有一种材料能满足时（植物纤维袋只要帆布 + 纤维绳就是典型），候选表里全是
                 // 同类物品，换与不换没有区别：不给 ▾ 入口，也不留 ◀/▶/自动 三个没意义的按钮。
+                // 液体槽位例外：一个混装瓶里不同的液体层算不同选法（倒牛奶 ≠ 倒水）。
                 bool canPick = CraftSelector.HasMaterialChoice(slot, pool);
                 if (canPick)
                 {
+                    // 括号里的数字＝候选表实际会列出几行（液体槽位按层展开，所以可能多于候选件数）
+                    int options = cands.Count;
+                    if (slot.isLiquid && !slot.specific)
+                    {
+                        try { options = CraftSelector.Choices(slot, pool).Count; } catch { }
+                    }
                     // 点材料名展开候选表（与覆盖层同一套状态）；◀/▶ 保留，习惯盲翻时仍可用
-                    if (GUILayout.Button(matName + "  (" + cands.Count + ")  ▾", _pickSlot == i ? _tabOn : _button,
+                    if (GUILayout.Button(matName + "  (" + options + ")  ▾", _pickSlot == i ? _tabOn : _button,
                                          GUILayout.Width(260f)))
                         TogglePick(i);
                 }
                 else
                 {
-                    SuppressPick(recipe.index, i);
+                    SuppressPick(recipe.index, i, slot);
                     GUILayout.Label(matName, _label, GUILayout.Width(260f));
                 }
 
@@ -467,7 +470,7 @@ namespace OptimisedCraftingSystem.UI
                         CyclePick(recipe, i, pool, +1);
                     if (GUILayout.Button(Loc.T("ocs.craft.auto"), _button, GUILayout.Width(110f)))
                     {
-                        CraftSession.ClearPick(recipe.index, i);
+                        CraftSession.ClearPick(recipe.index, i, slot);
                         RefreshPanel();
                     }
                 }
@@ -497,17 +500,35 @@ namespace OptimisedCraftingSystem.UI
         {
             try
             {
-                List<Item> cands = CraftSelector.Candidates(recipe.items[slotIndex], pool);
-                if (cands.Count == 0) return;
+                RecipeItem slot = recipe.items[slotIndex];
+                List<CraftSelector.Choice> rows = CraftSelector.Choices(slot, pool);
+                if (rows.Count == 0) return;
 
                 List<Item> selection = CraftSession.Select(recipe, pool);
                 Item current = selection != null && slotIndex < selection.Count ? selection[slotIndex] : null;
-                int at = current != null ? cands.IndexOf(current) : -1;
-                int next = at < 0
-                    ? (dir > 0 ? 0 : cands.Count - 1)
-                    : ((at + dir) % cands.Count + cands.Count) % cands.Count;
 
-                CraftSession.RememberPick(recipe.index, slotIndex, cands[next].GetInstanceID(), recipe.items[slotIndex]);
+                // 「当前这一行」：物品对上，且液体层对上手选的那层；没手选时按原版规则算出的那层算当前
+                string effective = CraftSession.GetLiquidPick(slot);
+                if (string.IsNullOrEmpty(effective) && current != null && slot.isLiquid && !slot.specific)
+                {
+                    try { effective = QualityModel.LiquidOf(slot, current); } catch { }
+                }
+
+                int at = -1;
+                for (int i = 0; i < rows.Count; i++)
+                {
+                    if (rows[i].Item != current) continue;
+                    string rowLiquid = rows[i].Liquid;
+                    if (string.IsNullOrEmpty(rowLiquid) ? !string.IsNullOrEmpty(effective) : rowLiquid != effective) continue;
+                    at = i;
+                    break;
+                }
+
+                int next = at < 0
+                    ? (dir > 0 ? 0 : rows.Count - 1)
+                    : ((at + dir) % rows.Count + rows.Count) % rows.Count;
+
+                CraftSession.RememberPick(recipe.index, slotIndex, rows[next].Item.GetInstanceID(), slot, rows[next].Liquid);
                 RefreshPanel();
             }
             catch (Exception e) { LogOnce(e); }
@@ -723,7 +744,7 @@ namespace OptimisedCraftingSystem.UI
                 }
                 else
                 {
-                    SuppressPick(recipe.index, i);
+                    SuppressPick(recipe.index, i, slot);
                     GUILayout.Label(pick, _label, GUILayout.Width(200f));
                 }
 
@@ -793,8 +814,9 @@ namespace OptimisedCraftingSystem.UI
             try
             {
                 if (recipe == null || recipe.items == null || slotIndex < 0 || slotIndex >= recipe.items.Count) return 0;
-                List<Item> cands = CraftSelector.Candidates(recipe.items[slotIndex], CraftingScanner.Gather(true));
-                return cands != null ? cands.Count : 0;
+                // 液体槽位按层展开：一个混装瓶可能是两行，所以这里要问 Choices 而不是 Candidates
+                List<CraftSelector.Choice> rows = CraftSelector.Choices(recipe.items[slotIndex], CraftingScanner.Gather(true));
+                return rows != null ? rows.Count : 0;
             }
             catch { return 0; }
         }
@@ -817,11 +839,12 @@ namespace OptimisedCraftingSystem.UI
         /// 候选里只剩一种 id——此时 ▾ 入口消失，「自动」按钮也跟着消失，手动指定就再也没法取消了。
         /// ClearPick 会写一条证据日志，所以这里只在确实还有记忆时调用一次，不能每帧调。
         /// </summary>
-        private static void SuppressPick(int recipeIndex, int slotIndex)
+        private static void SuppressPick(int recipeIndex, int slotIndex, RecipeItem slot)
         {
             if (_pickSlot == slotIndex) _pickSlot = -1;
-            if (CraftSession.PickMemory.TryGetValue(recipeIndex, out Dictionary<int, int> mem) && mem.ContainsKey(slotIndex))
-                CraftSession.ClearPick(recipeIndex, slotIndex);
+            bool remembered = CraftSession.PickMemory.TryGetValue(recipeIndex, out Dictionary<int, int> mem) && mem.ContainsKey(slotIndex);
+            if (remembered || !string.IsNullOrEmpty(CraftSession.GetLiquidPick(slot)))
+                CraftSession.ClearPick(recipeIndex, slotIndex, slot);
         }
 
         /// <summary>展开/收起某个槽位的候选材料表（与存放目标表互斥，屏幕上一次只摊一张）。</summary>
@@ -843,43 +866,52 @@ namespace OptimisedCraftingSystem.UI
             _destOpen = false;
         }
 
-        /// <summary>点开后的候选材料表：第一行「自动」，其后每行一件可用物品（点哪件就用哪件）。</summary>
+        /// <summary>
+        /// 点开后的候选材料表：第一行「自动」，其后每行一种选法（点哪种就用哪种）。
+        /// 液体槽位按**容器里的每一层液体**展开：一个混装瓶会列成「牛奶（盒装牛奶）」「过滤水（盒装牛奶）」，
+        /// 玩家选的就是"倒掉哪一层"，原版没有这个入口（它固定按 stack 顺序取第一个满足性质的层）。
+        /// </summary>
         private static void DrawPickList(Recipe recipe, int slotIndex, List<Item> pool, List<Item> selection, float width)
         {
             if (recipe == null || recipe.items == null || slotIndex < 0 || slotIndex >= recipe.items.Count) return;
             RecipeItem slot = recipe.items[slotIndex];
 
-            List<Item> cands;
-            try { cands = CraftSelector.Candidates(slot, pool); }
-            catch (Exception e) { LogOnce(e); cands = new List<Item>(); }
+            List<CraftSelector.Choice> rows;
+            try { rows = CraftSelector.Choices(slot, pool); }
+            catch (Exception e) { LogOnce(e); rows = new List<CraftSelector.Choice>(); }
 
             Item chosen = selection != null && slotIndex < selection.Count ? selection[slotIndex] : null;
+            string chosenLiquid = CraftSession.GetLiquidPick(slot);
 
             GUILayout.BeginVertical(_box);
-            GUILayout.Label(Loc.T("ocs.craft.pick.title") + " · " + Loc.T("ocs.win.col.item") + " (" + cands.Count + ")", _small);
+            GUILayout.Label(Loc.T("ocs.craft.pick.title") + " · " + Loc.T("ocs.win.col.item") + " (" + rows.Count + ")", _small);
 
             _pickScroll = GUILayout.BeginScrollView(_pickScroll, GUILayout.Width(width),
-                                                    GUILayout.Height(PickListHeight(cands.Count) - 36f));
+                                                    GUILayout.Height(PickListHeight(rows.Count) - 36f));
 
             if (GUILayout.Button(Loc.T("ocs.craft.auto"), chosen == null ? _tabOn : _button, GUILayout.Width(width - 26f)))
             {
-                CraftSession.ClearPick(recipe.index, slotIndex);
+                CraftSession.ClearPick(recipe.index, slotIndex, slot);
                 ClosePickers();
                 RefreshPanel();
             }
 
-            for (int k = 0; k < cands.Count; k++)
+            for (int k = 0; k < rows.Count; k++)
             {
-                Item c = cands[k];
+                Item c = rows[k].Item;
+                string liquid = rows[k].Liquid;
                 // 液体槽位显示「液体名（容器名）」：候选表里最该看清的是倒掉哪种液体
-                string label = CraftText.MaterialLabel(slot, c);
+                string label = CraftText.ChoiceLabel(slot, c, liquid);
                 string desc = SafeDescribe(slot, c);
                 if (!string.IsNullOrEmpty(desc)) label += "    " + desc;
-                if (c == chosen) label = "● " + label;
 
-                if (GUILayout.Button(label, c == chosen ? _tabOn : _tabOff, GUILayout.Width(width - 26f)))
+                bool isCurrent = c == chosen &&
+                                 (string.IsNullOrEmpty(liquid) ? string.IsNullOrEmpty(chosenLiquid) : liquid == chosenLiquid);
+                if (isCurrent) label = "● " + label;
+
+                if (GUILayout.Button(label, isCurrent ? _tabOn : _tabOff, GUILayout.Width(width - 26f)))
                 {
-                    CraftSession.RememberPick(recipe.index, slotIndex, c.GetInstanceID(), slot);
+                    CraftSession.RememberPick(recipe.index, slotIndex, c.GetInstanceID(), slot, liquid);
                     ClosePickers();
                     RefreshPanel();
                 }

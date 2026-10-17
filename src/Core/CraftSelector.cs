@@ -94,25 +94,100 @@ namespace OptimisedCraftingSystem
         }
 
         /// <summary>
-        /// 这个槽位是否真的「有得选」：候选里出现了第二种物品（按 id 区分）才算有。
+        /// 这个槽位是否真的「有得选」。
         ///
-        /// 为什么按 id 而不是按件数：同一个 id 的多件材料（比如两卷帆布）换哪件都不改变配方结果，
+        /// 普通槽位按物品 id 区分：同一个 id 的多件材料（比如两卷帆布）换哪件都不改变配方结果，
         /// 玩家眼里就是"没得换"。典型例子是植物纤维袋——它只要帆布 + 纤维绳各一件，两个槽位
         /// 各只有一种材料能满足，再摊一张全是同类物品的候选表只会挡住画面。
+        ///
+        /// **液体槽位按「容器里的每一层液体」区分**：一个混装瓶（牛奶 423 mL + 过滤水 280 mL）
+        /// 虽然只有一件物品，但倒牛奶还是倒水是两种结果，必须给玩家入口。
         ///
         /// 只扫一遍池子、不建列表：这个判定每帧对每个槽位都要问一次。
         /// </summary>
         internal static bool HasMaterialChoice(RecipeItem slot, List<Item> pool)
         {
             if (slot == null || pool == null) return false;
-            string firstId = null;
+            bool byLiquid = slot.isLiquid && !slot.specific;
+            string first = null;
             foreach (Item it in pool)
             {
                 if (!Usable(slot, it)) continue;
-                if (firstId == null) { firstId = it.id; continue; }
-                if (firstId != it.id) return true;   // string 的 != 是逐字符比较，正是这里要的
+
+                if (!byLiquid)
+                {
+                    if (first == null) { first = it.id; continue; }
+                    if (first != it.id) return true;   // string 的 != 是逐字符比较，正是这里要的
+                    continue;
+                }
+
+                WaterContainerItem wc = it.GetComponent<WaterContainerItem>();
+                bool any = false;
+                if (wc != null && wc.stack != null)
+                {
+                    for (int i = 0; i < wc.stack.Count; i++)
+                    {
+                        LiquidStack st = wc.stack[i];
+                        if (st == null || st.amount <= 0f) continue;
+                        if (!QualityModel.LiquidMeets(slot, st.liquidId, st.amount)) continue;
+                        any = true;
+                        string key = it.id + "|" + st.liquidId;
+                        if (first == null) { first = key; continue; }
+                        if (first != key) return true;
+                    }
+                }
+                if (any) continue;
+
+                // 取不到液体层的兜底：仍按物品 id 算一次，免得混装判定失效时整个入口消失
+                if (first == null) { first = it.id; continue; }
+                if (first != it.id) return true;
             }
             return false;
+        }
+
+        /// <summary>候选表里的一行：一件材料；液体槽位还带上是「哪一层液体」。</summary>
+        internal struct Choice
+        {
+            internal Item Item;
+            internal string Liquid;
+        }
+
+        /// <summary>
+        /// 把候选摊平成「可选的行」：液体槽位按容器里的每一层液体展开，其余槽位一件一行。
+        /// 只在玩家真的点开候选表时调用（会分配列表），每帧判定走 `HasMaterialChoice`。
+        /// </summary>
+        internal static List<Choice> Choices(RecipeItem slot, List<Item> pool)
+        {
+            List<Choice> rows = new List<Choice>();
+            if (slot == null || pool == null) return rows;
+            bool byLiquid = slot.isLiquid && !slot.specific;
+
+            foreach (Item it in pool)
+            {
+                if (!Usable(slot, it)) continue;
+
+                if (!byLiquid)
+                {
+                    rows.Add(new Choice { Item = it });
+                    continue;
+                }
+
+                WaterContainerItem wc = it.GetComponent<WaterContainerItem>();
+                bool any = false;
+                if (wc != null && wc.stack != null)
+                {
+                    for (int i = 0; i < wc.stack.Count; i++)
+                    {
+                        LiquidStack st = wc.stack[i];
+                        if (st == null || st.amount <= 0f) continue;
+                        if (!QualityModel.LiquidMeets(slot, st.liquidId, st.amount)) continue;
+                        rows.Add(new Choice { Item = it, Liquid = st.liquidId });
+                        any = true;
+                    }
+                }
+                if (!any) rows.Add(new Choice { Item = it });
+            }
+            return rows;
         }
 
         // ————————————————————————————————————————————————————————————

@@ -26,6 +26,17 @@ namespace OptimisedCraftingSystem
         /// </summary>
         internal static readonly Dictionary<int, Dictionary<int, int>> PickMemory = new Dictionary<int, Dictionary<int, int>>();
 
+        /// <summary>
+        /// 「这个槽位倒掉哪一层液体」：槽位 → 液体 id。
+        ///
+        /// 为什么需要它：原版 `RecipeItem.UseItem` 的液体分支只按 `WaterContainerItem.stack` 的顺序
+        /// **取第一个满足性质的层**，混装瓶（比如牛奶 423 mL + 过滤水 280 mL 的牛奶盒）里想倒牛奶
+        /// 而不是水，原版根本没有入口；玩家只能在面板里看到「消耗水」。
+        /// 这里记下玩家的选择，`QualityModel.Liquid` 与 `PatchRecipeItemUseItem` 都读它。
+        /// 只在那一层**确实满足槽位性质**时生效，否则一律回落到原版顺序（见 `QualityModel.Liquid`）。
+        /// </summary>
+        internal static readonly Dictionary<RecipeItem, string> LiquidPick = new Dictionary<RecipeItem, string>();
+
         /// <summary>玩家手动指定的液体目标容器（物品 InstanceID；0 = 自动挑）。</summary>
         internal static int ManualBottleInstance;
 
@@ -97,10 +108,11 @@ namespace OptimisedCraftingSystem
         }
 
         /// <summary>
-        /// 记住玩家在面板里手动指定的材料。
+        /// 记住玩家在面板里手动指定的材料（液体槽位还可以指定「倒哪一层」）。
         /// `slot` 只用于证据日志的措辞（液体槽位写成「液体名（容器名）」），不参与选择逻辑。
         /// </summary>
-        internal static void RememberPick(int recipeIndex, int slotIndex, int instanceId, RecipeItem slot = null)
+        internal static void RememberPick(int recipeIndex, int slotIndex, int instanceId, RecipeItem slot = null,
+                                          string liquidId = null)
         {
             if (!PickMemory.TryGetValue(recipeIndex, out Dictionary<int, int> map))
             {
@@ -108,22 +120,42 @@ namespace OptimisedCraftingSystem
                 PickMemory[recipeIndex] = map;
             }
             map[slotIndex] = instanceId;
+            SetLiquidPick(slot, liquidId);
 
             // 证据日志：手动选材是玩家侧交互，日志留痕后"这次合成用的是我指定的那件"才可核对
             try
             {
                 Item picked = FindByInstance(CraftingScanner.Gather(includeFloor: true), instanceId);
                 Plugin.Evidence(
-                    "pick:" + recipeIndex + ":" + slotIndex + ":" + instanceId,
+                    "pick:" + recipeIndex + ":" + slotIndex + ":" + instanceId + ":" + (liquidId ?? "-"),
                     "手动选材：配方#" + recipeIndex + " 槽位" + slotIndex + " ← " +
-                    (picked != null ? CraftText.MaterialLabel(slot, picked) : ("物品#" + instanceId)));
+                    (picked != null
+                        ? CraftText.ChoiceLabel(slot, picked, liquidId)
+                        : ("物品#" + instanceId)));
             }
             catch { }
         }
 
-        /// <summary>取消玩家对某个槽位的手动指定。</summary>
-        internal static void ClearPick(int recipeIndex, int slotIndex)
+        /// <summary>这个槽位手动指定的液体层（没有指定就返回 null）。</summary>
+        internal static string GetLiquidPick(RecipeItem slot)
         {
+            if (slot == null) return null;
+            string id;
+            return LiquidPick.TryGetValue(slot, out id) ? id : null;
+        }
+
+        /// <summary>指定/取消某个槽位的液体层（传 null 或空串＝回到「按原版顺序自动取」）。</summary>
+        internal static void SetLiquidPick(RecipeItem slot, string liquidId)
+        {
+            if (slot == null) return;
+            if (string.IsNullOrEmpty(liquidId)) LiquidPick.Remove(slot);
+            else LiquidPick[slot] = liquidId;
+        }
+
+        /// <summary>取消玩家对某个槽位的手动指定。</summary>
+        internal static void ClearPick(int recipeIndex, int slotIndex, RecipeItem slot = null)
+        {
+            SetLiquidPick(slot, null);
             if (PickMemory.TryGetValue(recipeIndex, out Dictionary<int, int> map))
             {
                 map.Remove(slotIndex);

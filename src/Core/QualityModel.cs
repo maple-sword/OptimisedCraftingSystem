@@ -125,22 +125,29 @@ namespace OptimisedCraftingSystem
             else
             {
                 if (slot.quality == null) return c;
-                // 复刻 UseItem：按 stack 顺序取第一个满足性质的那一层
+                // 复刻 UseItem：按 stack 顺序取第一个满足性质的那一层。
+                // 例外是玩家在候选表里手动指定了某一层（混装瓶里想倒牛奶而不是水）：
+                // 先按指定层找，找不到再按原版顺序回落 —— 指定层不满足性质时绝不硬倒。
+                string wanted = CraftSession.GetLiquidPick(slot);
                 bool found = false;
                 liquidId = null; ml = 0f; availableMl = 0f;
-                for (int i = 0; i < wc.stack.Count; i++)
+                for (int pass = string.IsNullOrEmpty(wanted) ? 1 : 0; pass < 2 && !found; pass++)
                 {
-                    LiquidStack st = wc.stack[i];
-                    if (st == null) continue;
-                    if (!Liquids.Registry.TryGetValue(st.liquidId, out LiquidType type)) continue;
-                    CraftingQuality matched = Item.GetQualityThatMeetsCriteria(slot.quality, type.GetScaledQualities(st.amount));
-                    if (matched == null) continue;
-                    float t = Mathf.Clamp01(slot.quality.amount / Mathf.Max(0.0001f, matched.amount));
-                    liquidId = st.liquidId;
-                    availableMl = st.amount;
-                    ml = st.amount * t;
-                    found = true;
-                    break;
+                    for (int i = 0; i < wc.stack.Count; i++)
+                    {
+                        LiquidStack st = wc.stack[i];
+                        if (st == null) continue;
+                        if (pass == 0 && st.liquidId != wanted) continue;
+                        if (!Liquids.Registry.TryGetValue(st.liquidId, out LiquidType type)) continue;
+                        CraftingQuality matched = Item.GetQualityThatMeetsCriteria(slot.quality, type.GetScaledQualities(st.amount));
+                        if (matched == null) continue;
+                        float t = Mathf.Clamp01(slot.quality.amount / Mathf.Max(0.0001f, matched.amount));
+                        liquidId = st.liquidId;
+                        availableMl = st.amount;
+                        ml = st.amount * t;
+                        found = true;
+                        break;
+                    }
                 }
                 if (!found) return c;
             }
@@ -167,6 +174,25 @@ namespace OptimisedCraftingSystem
                 return c.Kind == ConsumeKind.LiquidMl ? c.LiquidId : null;
             }
             catch { return null; }
+        }
+
+        /// <summary>
+        /// 某一层液体能不能独当这个液体槽位（性质判定与「指定液体」两种规则都覆盖）。
+        ///
+        /// 候选表用它把混装瓶按层摊开：能过判定的层才列成一行，判定口径与 `Liquid()` 完全一致，
+        /// 否则会出现"界面允许选、真到消耗时却倒不出来"。
+        /// </summary>
+        internal static bool LiquidMeets(RecipeItem slot, string liquidId, float amount)
+        {
+            if (slot == null || string.IsNullOrEmpty(liquidId) || amount <= 0f) return false;
+            try
+            {
+                if (slot.specific) return slot.specificId == liquidId && amount >= slot.minimumCondition;
+                if (slot.quality == null) return false;
+                if (!Liquids.Registry.TryGetValue(liquidId, out LiquidType type) || type == null) return false;
+                return Item.GetQualityThatMeetsCriteria(slot.quality, type.GetScaledQualities(amount)) != null;
+            }
+            catch { return false; }
         }
 
         /// <summary>液体的价值：与 ItemInfo.GetValue 内部对内容物的估法一致（每升 valuePerLiter）。</summary>
