@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Text;
 using HarmonyLib;
 
@@ -48,10 +49,19 @@ namespace OptimisedCraftingSystem
 
             try
             {
-                Plugin.Log?.LogWarning(
-                    "[Compat] RecipeItem.DoesUseItemType 抛异常（已吞掉，返回值按「不满足」处理）："
-                    + Describe(item, __instance)
-                    + " → " + __exception.GetType().Name + ": " + __exception.Message);
+                // 真机日志里同一件物品（血袋装着第三方液体 `Blood O+`）+ 同一个槽位会被反复判定，
+                // 每次刷新 C 键面板都可能再抛一次；这里按「物品/液体/槽位/异常类型」去重，
+                // 同一个组合只在本次游戏里记第一条，日志不会被刷屏。
+                string desc = Describe(item, __instance);
+                string key = desc + "|" + __exception.GetType().Name;
+                if (FirstTime(key))
+                {
+                    Plugin.Log?.LogWarning(
+                        "[Compat] RecipeItem.DoesUseItemType 抛异常（已吞掉，返回值按「不满足」处理）："
+                        + desc
+                        + " → " + __exception.GetType().Name + ": " + __exception.Message
+                        + "（同一组合只记第一条）");
+                }
             }
             catch
             {
@@ -59,6 +69,23 @@ namespace OptimisedCraftingSystem
             }
 
             return null;   // 返回 null = 吞掉异常，方法以默认返回值 false 结束
+        }
+
+        /// <summary>已报告过的「物品/液体/槽位/异常类型」组合（只在本次运行内有效，进程退出即清空）。</summary>
+        private static readonly HashSet<string> ReportedKeys = new HashSet<string>();
+        private static readonly object ReportedGate = new object();
+
+        /// <summary>首次出现返回 true；字典本身出错时返回 true（宁可多记一条，也不要漏记）。</summary>
+        private static bool FirstTime(string key)
+        {
+            try
+            {
+                lock (ReportedGate) return ReportedKeys.Add(key);
+            }
+            catch
+            {
+                return true;
+            }
         }
 
         /// <summary>把出问题时的关键状态拼成一行，供日志核对（尽量不抛异常）。</summary>

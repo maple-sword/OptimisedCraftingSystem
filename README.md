@@ -26,7 +26,7 @@ It started life as **BetterInventoryLogic** (by BalaurBohemianBroken, CC BY 4.0)
 | **Favourited containers** | neither vanilla nor the original mod cares — starred bottles get filled anyway | **starred containers never receive liquid** (skipped by the planner, greyed out in the list, and blocked even if picked by hand) |
 | **Compatibility** | replaced vanilla `RecipeResult.SpawnResult` outright with a `Prefix` returning `false`, which erased other mods' patches and made load order with CUCoreLib undefined | never touches `SpawnResult`: it opens a session before the craft and only takes over the storage step afterwards; every patch sits at Harmony priority `Low` and yields when another mod already handled the call |
 | **Performance** | every refresh re-scanned *all* items and ran a physics circle query **once per visible recipe** (the author's own TODO says "STILL get a lag spike") | scan results are **cached per frame**, so one refresh scans once no matter how many recipes exist |
-| **Settings & localisation** | 23 English-only toggles, 38 English-only keys injected with `Dictionary.Add` (throws if run twice), and **"reset to default" never reset the mod's settings** | 36 entries with Chinese + English titles/descriptions following the UI language; injected keys **never overwrite existing ones** (translation packs win); *reset to default* really does reset them |
+| **Settings & localisation** | 19 English-only toggles, 38 English-only keys injected with `Dictionary.Add` (throws if run twice), and **"reset to default" never reset the mod's settings** | 36 entries with Chinese + English titles/descriptions following the UI language; injected keys **never overwrite existing ones** (translation packs win); *reset to default* really does reset them |
 
 The original mod's 28 defects are all fixed as well — the usual suspects: comparison chains with the sign flipped (floor/body preferences), liquid comparison using `break` instead of `continue` (so only the first layer was compared), an indexer lookup that throws on unregistered liquids, "prefer fuller containers" implemented as "prefer emptiest", per-frame rescans, localisation injection clobbering translation mods, and the "reports stored but never stored" bug above.
 
@@ -114,7 +114,7 @@ All 36 entries live in the game's own settings menu (35 toggles on *Game*, the k
 | `ocs.craft.prefer_empty_bottle` | true | Prefer empty bottles |
 | `ocs.craft.rescue_liquid` | true | Save liquid from consumed bottles |
 | `ocs.ui.consumption` | true | Show consumption in the crafting screen |
-| `ocs.ui.stacking` | true | Stack identical ingredients |
+| `ocs.ui.stacking` | true | Merge identical ingredients in the materials window |
 | `ocs.ui.verbose` | false | Show detailed numbers |
 | `ocs.tip.container_totals` | true | Hold Shift for container contents |
 | `ocs.tip.container_weight` | true | Also show contents weight |
@@ -148,6 +148,7 @@ OptimisedCraftingSystem 1.0.0 loaded (Harmony patches applied).
 
 - Manual picks are not persisted across restarts; automatic picking is recomputed every time.
 - A liquid slot shows the layer that will actually be poured; liquids this mod doesn't recognise (e.g. a third-party `Blood O+`) are shown by raw id.
+- A liquid that another mod injects without registering it (same `Blood O+` case) makes the vanilla "does this item satisfy the slot" check throw; this mod treats it as *not satisfied* (no crash, and the warning is logged only once), so containers holding such a liquid won't be picked for those slots.
 - If every usable bottle is favourited and makeshift bottles are disabled, that liquid is lost — the pre-craft prediction says so in advance.
 - Contents that don't fit into the new container are dropped at your feet; this mod does not try to stuff them into your backpack.
 - If another mod takes over the craft entirely (e.g. `prosthetics` with a titanium hand), the *Needs* block does not describe the real consumption.
