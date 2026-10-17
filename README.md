@@ -9,7 +9,7 @@ It started life as **BetterInventoryLogic** (by BalaurBohemianBroken, CC BY 4.0)
 - BepInEx 5 (Mono) plugin · GUID `maple.optimisedcraftingsystem` · assembly `OptimisedCraftingSystem.dll`
 - **Cannot be installed alongside the original `CraftingLogic.dll`** — it refuses to load and says so in the log
 - **36 settings** live in the game's own settings menu (35 toggles on the *Game* page, 1 keybind on the *Input* page) and are stored in the game's `settings.json`
-- Chinese + English UI and docs · licence **CC BY-SA 4.0** (see [NOTICE.md](NOTICE.md), [LICENSE](LICENSE))
+- Chinese + English UI and docs · licence **CC BY-SA 4.0** (see [NOTICE.md](NOTICE.md), [LICENSE](LICENSE); the original mod's CC BY 4.0 text is kept verbatim in [LICENSE-original.md](LICENSE-original.md))
 
 ## How it differs from the original mod
 
@@ -167,7 +167,7 @@ Layout: `src/Core/` (picking, storage planning, liquid routing, session state, l
 ## Credits & license
 
 - Derivative of **BetterInventoryLogic** by **BalaurBohemianBroken** (**CC BY 4.0**).
-- Released under **CC BY-SA 4.0**. Attribution and the reused-vs-independent boundary are spelled out in [NOTICE.md](NOTICE.md); licence text in [LICENSE](LICENSE).
+- Released under **CC BY-SA 4.0**. Attribution and the reused-vs-independent boundary are spelled out in [NOTICE.md](NOTICE.md); this mod's licence text is in [LICENSE](LICENSE), and the original mod's CC BY 4.0 text is kept verbatim in [LICENSE-original.md](LICENSE-original.md).
 - Game content and assets belong to their respective owners; this repository contains no game files.
 
 Deeper documentation (per-change evidence, before/after comparisons) is in [docs/](docs/).

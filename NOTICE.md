@@ -23,6 +23,15 @@
 - **程序集 / 部署文件名**：`OptimisedCraftingSystem.dll`
 - **许可证**：CC BY-SA 4.0（与 CC BY 4.0 兼容，且比原作品更严格）
 
+## 仓库里的两个许可证文件
+
+| 文件 | 内容 | 用途 |
+|---|---|---|
+| `LICENSE` | **Creative Commons Attribution-ShareAlike 4.0 International** 全文（官方 legalcode 原文，427 行 / 20133 字节） | 本模组（衍生作品）自身采用的许可证 |
+| `LICENSE-original.md` | **Creative Commons Attribution 4.0 International** 全文（原作品 `licence.txt` 的逐字节拷贝，396 行 / 18657 字节，首行 `Attribution 4.0 International`） | 记录被改编作品的原始许可条款，便于对照「署名」与「相同方式共享」两项义务 |
+
+说明：原作品采用 CC BY 4.0，它只要求署名、不要求衍生作品沿用同一许可证；本模组**自愿**选择更严格的 CC BY-SA 4.0 发布，因此在任何解释下都满足原作品的许可条件。按 CC BY-SA 4.0 第 3 条，分发本模组或其修改版时需保留本文件与 `LICENSE-original.md` 里的署名与许可信息。
+
 ## 做了什么改动
 
 本模组是原作品的**衍生作品**，但代码是**重写**的：

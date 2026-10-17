@@ -9,7 +9,7 @@
 - BepInEx 5（Mono）插件，GUID `maple.optimisedcraftingsystem`，程序集 `OptimisedCraftingSystem.dll`
 - 与原模组 `CraftingLogic.dll` **不能同时安装**（启动时会在日志里报错提醒）
 - 设置共 **36 项**，在游戏自己的设置界面里（「游戏」页 35 个开关 +「输入」页 1 个热键），存进游戏自己的 `settings.json`
-- 中英双语；许可 **CC BY-SA 4.0**（详见 [NOTICE.md](NOTICE.md) 与 [LICENSE](LICENSE)）
+- 中英双语；许可 **CC BY-SA 4.0**（详见 [NOTICE.md](NOTICE.md)、[LICENSE](LICENSE)；原作品的 CC BY 4.0 全文存档于 [LICENSE-original.md](LICENSE-original.md)）
 
 ## 与原模组（BetterInventoryLogic）的区别
 
@@ -142,7 +142,7 @@ dotnet build src\OptimisedCraftingSystem.csproj -c Release -p:GameDir="D:\Steam\
 ## 许可与致谢
 
 - 衍生自 **BetterInventoryLogic**（作者 **BalaurBohemianBroken**，**CC BY 4.0**）。
-- 本模组以 **CC BY-SA 4.0** 发布。署名与「沿用 / 独立实现」的分界见 [NOTICE.md](NOTICE.md)，许可证全文见 [LICENSE](LICENSE)。
+- 本模组以 **CC BY-SA 4.0** 发布。署名与「沿用 / 独立实现」的分界见 [NOTICE.md](NOTICE.md)，本模组的许可证全文见 [LICENSE](LICENSE)，原作品的 CC BY 4.0 全文见 [LICENSE-original.md](LICENSE-original.md)。
 - 游戏内容与素材归其各自权利人所有，本仓库不包含任何游戏文件。
 
 更多细节（含每条改动的取证与前后对比）见 [docs/](docs/)。
