@@ -1,69 +1,86 @@
 # Optimised Crafting System
 
-A crafting companion mod for **Casualties: Unknown Demo** (Unity 2022.3.62f3 / Mono, BepInEx 5).
+> Know before you craft **what it will cost and where the result goes**.
 
-The vanilla crafting screen tells you *what* a recipe needs. This mod tells you **what it will actually cost you, and where the result will go — before you press the button**, and lets you overrule every one of those decisions.
+The vanilla crafting screen only lists what a recipe *needs*. Everything else you find out the hard way: which bottle gets drained, how much durability disappears, which container swallows the result, whether the parts in your bag survive. **This mod fills in all of it — and lets you override every single decision.**
 
-> Formerly named **BetterCraftingLogic**. It is a derivative work of **BetterInventoryLogic** by *BalaurBohemianBroken* (CC BY 4.0) — see [Credits & license](#credits--license).
+It started life as **BetterInventoryLogic** (by BalaurBohemianBroken, CC BY 4.0). The picking algorithm, storage planning, liquid routing and both windows were rewritten: the original patched *after* the fact and ranked ingredients by preference toggles; this version **works the cost out before you press craft and lets you change the answer by hand**.
 
-- BepInEx 5 (Mono) plugin · assembly `OptimisedCraftingSystem.dll` · GUID `maple.optimisedcraftingsystem`
-- Settings live in the **game's own settings menu** (36 entries), stored in the game's `settings.json` — **not** a BepInEx `.cfg`
-- All evidence in the docs is captured from real play sessions (`BepInEx\LogOutput.log`), with line numbers
-- Chinese documentation: [README.zh-CN.md](README.zh-CN.md) · in-depth Chinese docs in [`docs/`](docs/)
+- BepInEx 5 (Mono) plugin · GUID `maple.optimisedcraftingsystem` · assembly `OptimisedCraftingSystem.dll`
+- **Cannot be installed alongside the original `CraftingLogic.dll`** — it refuses to load and says so in the log
+- **36 settings** live in the game's own settings menu (35 toggles on the *Game* page, 1 keybind on the *Input* page) and are stored in the game's `settings.json`
+- Chinese + English UI and docs · licence **CC BY-SA 4.0** (see [NOTICE.md](NOTICE.md), [LICENSE](LICENSE))
 
----
+## How it differs from the original mod
 
-## What it changes
-
-| | Vanilla | With this mod |
+| | Original BetterInventoryLogic | This mod |
 |---|---|---|
-| Ingredient choice | fixed priority list | **cost-based picking** — what this craft actually destroys (value, durability, location, scarcity) |
-| Consumption | invisible | every slot shows `120 mL` / `whole item` / `durability −12% (8 uses left)` |
-| Result destination | you find out afterwards | **predicted before crafting**, and you can re-route it by hand |
-| Liquid destination | vanilla picks a bottle | candidate list of **every** bottle (carried, in containers, on the floor) with contents + free space; unusable rows are greyed out with the reason |
-| Filled bottle consumed as an ingredient | the liquid **vanishes** | liquid is poured into a makeshift bottle first (5-minute lifetime, same as vanilla) |
-| Filled container consumed as an ingredient | not allowed at all | allowed: contents are held, moved into the new container, overflow drops at your feet |
-| Favourited (starred) container | gets filled anyway | **never receives liquid** (optional) |
-| Containers with different liquids | stacked as `×2` | kept apart, each row names its liquid |
-| Materials overview | — | press **M**: every item grouped, qualities, weight, condition, value, "recipes that can use this quality" |
+| **Picking** | seven preference toggles in one comparison chain, sorted and then **the last entry wins**; no cost model at all, so ties are effectively random | computes the **real cost** of this craft (value destroyed, durability, where the item lives, whether another recipe needs it): if the gap is >25% the cheaper option wins outright, and only within 25% do the preference toggles decide. Also **protects scarce items** — the only tool that provides a required quality is never burned as an ingredient |
+| **Consumption** | none — the recipe tooltip shows tick/cross icons | the crafting screen gains a **Needs** block: `120 mL` / `whole item` / `durability −12% (8 uses left)` per slot, and liquid slots name **the exact liquid layer that will be poured, with its container** |
+| **Storage** | a hard-coded English `Stored: …` line **after** crafting — and it reports success even when `LoadItem` silently failed | a prediction **before** crafting (`will be stored in: canvas backpack (3.2 kg free)` / `right hand` / `on the ground`), and after loading every item is **verified** (parent transform, slot actually taken); if verification fails it falls back to vanilla instead of lying |
+| **Overriding** | nothing (the author left "in the future" TODOs in the source) | click an ingredient or the *will be stored in* row to expand a candidate list and pick one — first row is always *Automatic (recommended)*; picks are remembered and impossible picks are skipped |
+| **Liquid routing** | only bottles that can take the whole amount in one go, otherwise a makeshift bottle | three tiers: fits in one bottle → **split across bottles** by free space → only then a makeshift bottle. The candidate list shows **every bottle** (carried, inside containers, even on the floor) with its contents and free space; rows the automatic planner won't use are listed too, greyed out with the reason |
+| **UI** | none at all (five logic patches only) | press **M** for the materials overview (880×560, draggable, rebindable); a compact **overlay** on the right of the crafting screen repeats the current recipe's costs and destination — also draggable, double-click to reset, click an ingredient to expand its candidates |
+| **Makeshift bottles** | `Destroy(go, 300f)` — filled bottles vanish with their liquid after 5 minutes (vanilla behaviour) | **the same, deliberately**: a filled makeshift bottle is destroyed with its liquid after 5 minutes; an empty one (nothing could be poured) is cleaned up after 30 s |
+| **Consumed containers** | liquid in a bottle used as an ingredient **simply disappears**; a container with anything inside **cannot be used as an ingredient at all** | the liquid is saved (poured into a makeshift bottle first) and empty bottles are **preferred** during picking; filled containers **can** be used — contents are lifted out, moved into the new container, and anything that doesn't fit is dropped at your feet with an alert |
+| **Favourited containers** | neither vanilla nor the original mod cares — starred bottles get filled anyway | **starred containers never receive liquid** (skipped by the planner, greyed out in the list, and blocked even if picked by hand) |
+| **Compatibility** | replaced vanilla `RecipeResult.SpawnResult` outright with a `Prefix` returning `false`, which erased other mods' patches and made load order with CUCoreLib undefined | never touches `SpawnResult`: it opens a session before the craft and only takes over the storage step afterwards; every patch sits at Harmony priority `Low` and yields when another mod already handled the call |
+| **Performance** | every refresh re-scanned *all* items and ran a physics circle query **once per visible recipe** (the author's own TODO says "STILL get a lag spike") | scan results are **cached per frame**, so one refresh scans once no matter how many recipes exist |
+| **Settings & localisation** | 23 English-only toggles, 38 English-only keys injected with `Dictionary.Add` (throws if run twice), and **"reset to default" never reset the mod's settings** | 36 entries with Chinese + English titles/descriptions following the UI language; injected keys **never overwrite existing ones** (translation packs win); *reset to default* really does reset them |
 
-Everything above is a real patch to vanilla behaviour. Nothing is written to your save beyond normal in-game crafting.
+The original mod's 28 defects are all fixed as well — the usual suspects: comparison chains with the sign flipped (floor/body preferences), liquid comparison using `break` instead of `continue` (so only the first layer was compared), an indexer lookup that throws on unregistered liquids, "prefer fuller containers" implemented as "prefer emptiest", per-frame rescans, localisation injection clobbering translation mods, and the "reports stored but never stored" bug above.
 
-## Install
+## Everything it does
 
-1. Install **BepInEx 5 (x64, Mono)** into `Casualties Unknown Demo\`.
-2. Put `OptimisedCraftingSystem.dll` into `Casualties Unknown Demo\BepInEx\plugins\`.
-3. Remove conflicting copies — the plugin refuses to run alongside the original mod:
-   - delete `plugins\CraftingLogic.dll` (the original **BetterInventoryLogic**), and
-   - make sure an old `plugins\BetterCraftingLogic.dll` is **not** next to the new file (rename it to `BetterCraftingLogic.dll.disabled` or move it out of `plugins\`) — two names = two plugins = every patch applied twice.
-4. Start the game. The log should contain:
+**Before you craft**
 
-```
-Loading [Optimised Crafting System 1.0.0]
-OptimisedCraftingSystem 1.0.0 loaded (Harmony patches applied).
-[Self-check] language=English settings=36 hotkey=M font=...
-[Self-check] recipes=278 item types=371 player=present
-```
+- Per-slot consumption and the result's destination, on the crafting screen.
+- Missing-ingredient behaviour is identical to vanilla — this mod never relaxes a recipe.
+- The overlay mirrors the same information without covering the vanilla panel.
 
-`[Self-check]` also prints, for all 14 patched methods, **which mod owns which patch prefix** — the fastest way to diagnose a conflict with another mod.
+**Picking**
 
-## Usage
+- Cost-aware smart picking (value / durability / location / scarcity).
+- The original ordered chain is kept as a fallback (`ocs.pick.smart` off), with its direction bug fixed.
+- Manual picking: candidate list, remembered choice, *Automatic* to reset; one item can never fill two slots.
+- Scarcity protection: an item some other slot needs exclusively is not consumed as material.
 
-| Action | What you get |
-|---|---|
-| Open the crafting screen (**C**) | an extra *Needs* block under the recipe: per-slot consumption, plus a final line `will be stored in: canvas backpack (3.2 kg free)`. Liquid slots read `purified water (canteen)` — the actual liquid layer that will be poured, with the container in parentheses |
-| Compact overlay next to the crafting screen | the same information in condensed form. Click an ingredient to expand its candidate list, click the *will be stored in* row to expand the container/bottle candidates; pick one and it takes effect immediately. **Drag the title bar to move it, double-click to reset** |
-| **M** (rebindable) | materials overview window: items grouped by id, with count, location, qualities, condition, value and how many recipes can use them; click a row for details |
-| **Shift** + hover a container | tooltip gains contents detail, total contents weight and free space |
-| Star a container (**favourite**) | starred containers are skipped as liquid destinations (candidate rows greyed out with `favourited (this mod will not pour into it)`). Turn off `ocs.liquid.skip_favorited` to restore vanilla behaviour |
-| Craft something that consumes a filled bottle | the liquid is poured into a makeshift bottle first (5 minutes, like vanilla) instead of disappearing |
-| Craft something that consumes a filled container | contents are moved into the new container; if they don't fit they are dropped at your feet with an alert |
+**Storage**
 
-Every one of those interactions writes a one-line evidence record to the BepInEx log (`[measured] ...`, `[craft] ...`), so you can verify what actually happened.
+- Pre-craft prediction of where the result goes (container / inventory slot / equipment slot / ground).
+- Manual re-routing, verified after loading, silently falling back to vanilla on failure.
+- Post-craft alert naming what received the result, localised and in a stable order.
+
+**Liquids**
+
+- Three-tier routing (one bottle → split across bottles → makeshift bottle).
+- Candidate list with every bottle (floor included); unusable ones greyed out with the reason (mixing / no empty bottles / capacity / favourited).
+- **Same liquid prefers the makeshift bottle** — that portion is doomed to vanish in 5 minutes anyway.
+- **Liquid containers are never stacked together** — only bottles with identical contents merge into `×2`.
+- **Favourited containers never receive liquid** (planner, manual pick and fallback all blocked).
+- Liquid inside a bottle used as an ingredient is rescued into a makeshift bottle instead of vanishing.
+
+**Consumed containers**
+
+- Filled containers can be ingredients: contents are lifted out first, then loaded into the new container item by item.
+- Overflow drops at your feet with an alert; if the new container itself is full, the result goes back to vanilla for inventory placement.
+- Two safety nets (session start and end) guarantee nothing is left frozen in limbo.
+
+**Windows**
+
+- **M** materials overview: items merged by id (count / location / qualities / condition / value / how many recipes can use them), click a row for details.
+- **Shift**-hover a container for a contents breakdown, total contents weight and free space.
+- Both the window and the overlay can be dragged.
+
+**Engineering**
+
+- All patches at `Priority.Low`; verified to coexist with `QoL Unknown`, `Crafting Tweaks`, `CUCoreLib`, `prosthetics`, and others.
+- Built-in `[Self-check]`: on startup it prints which mod owns each of the 14 patched methods, plus setting count, recipe/item type counts and the font it got.
+- 14 patch classes, 36 settings, Chinese + English.
 
 ## Settings
 
-36 entries in the game's settings menu — 35 toggles on the **Game** page, 1 keybind on the **Input** page. Chinese and English titles/descriptions are injected according to the interface language.
+All 36 entries live in the game's own settings menu (35 toggles on *Game*, the keybind on *Input*) and are stored in the game's `settings.json` — **not** in a BepInEx `.cfg`. The full table with per-item explanations is in the Chinese docs (`docs/新功能说明与设置.md`).
 
 | Name | Default | Meaning |
 |---|---|---|
@@ -91,7 +108,7 @@ Every one of those interactions writes a one-line evidence record to the BepInEx
 | `compare_liquid_unmixed_enabled` | true | Liquid: prefer unmixed bottles |
 | `compare_liquid_stacking_enabled` | true | Liquid: prefer same liquid |
 | `compare_liquid_weight_enabled` | true | Liquid: prefer lighter bottles |
-| `ocs.liquid.tempbottle` | true | Allow makeshift bottles |
+| `ocs.liquid.tempbottle` | true | Allow makeshift bottles (5-minute lifetime, like vanilla) |
 | `ocs.liquid.skip_favorited` | true | Keep liquid out of favourited containers |
 | `ocs.craft.container_contents` | true | Allow filled containers as ingredients |
 | `ocs.craft.prefer_empty_bottle` | true | Prefer empty bottles |
@@ -104,36 +121,52 @@ Every one of those interactions writes a one-line evidence record to the BepInEx
 | `ocs.window.enabled` | true | Enable the materials window |
 | `ocs.window.floor` | true | Include floor items in the window |
 
-> Settings with the `ocs.*` prefix are this mod's own; the unprefixed ones keep the original mod's names so existing localisations and habits keep working.
+Unprefixed names are inherited from the original mod, so existing habits and translations keep working; `ocs.*` entries are new.
+
+## Install
+
+1. Drop `OptimisedCraftingSystem.dll` into `Casualties Unknown Demo\BepInEx\plugins\`.
+2. Remove conflicting copies: delete `plugins\CraftingLogic.dll` (the original mod), and if an old `plugins\BetterCraftingLogic.dll` is still there, rename it to `BetterCraftingLogic.dll.disabled` or move it out — **two names means two plugins and every patch applied twice**.
+3. Start the game; the log should show:
+
+```
+Loading [Optimised Crafting System 1.0.0]
+OptimisedCraftingSystem 1.0.0 loaded (Harmony patches applied).
+[Self-check] language=English settings=36 hotkey=M font=...
+[Self-check] recipes=278 item types=371 player=present
+[Self-check] Recipe.GetItemsForRecipe <- this mod: maple.optimisedcraftingsystem/prefix(p200); others: com.HerobrinesProsthetics/prefix(p400)
+```
+
+`[Self-check]` prints all 14 patched methods one per line — the fastest way to diagnose a mod conflict. A "legacy mod detected" error means step 2 was skipped.
 
 ## Compatibility
 
-- **Other mods' patches are respected.** This mod registers everything at Harmony priority `Low` (200) and yields whenever another mod already handled the call. The only two deliberate exceptions: a `High` (600) postfix that must run last, and a notification prefix at `HigherThanNormal` (500) that competes with *QoL Unknown*'s "reset to default" short-circuit (both mods work; see `docs/改动对照与Bug修复.md` §2 item 18).
-- Tested alongside: `prosthetics` (HerobrinesProsthetics), `Crafting Tweaks`, `CUCoreLib`, `QoL Unknown`, `Nutrition System`, `Hemopneumothorax`, `New Firearms`, and a Chinese localisation pack.
-- The original **BetterInventoryLogic / CraftingLogic.dll** is refused at load time (it patches the same methods and would double-apply).
+- Verified alongside `QoL Unknown`, `Crafting Tweaks`, `CUCoreLib`, `prosthetics`, `Nutrition System`, `Hemopneumothorax`, `New Firearms` and common translation packs. Everything sits at `Priority.Low` and yields when someone else handled the call.
+- Two deliberate exceptions: a `High` postfix that must run last, and a notification prefix that races `QoL Unknown`'s *reset to default* short-circuit (both mods work; see the Chinese bug-fix table, item 18).
 
 ## Known limitations
 
-- Manual ingredient/container picks are not persisted across restarts; automatic picking is recomputed every time.
-- A liquid slot shows the layer that will actually be poured. Liquids this mod doesn't recognise (e.g. a third-party `Blood O+`) are shown by raw id.
-- If *every* usable bottle is favourited and makeshift bottles are disabled, that liquid is lost — the pre-craft prediction line says so in advance.
-- If another mod takes over the craft entirely (e.g. `prosthetics` with a titanium hand), this mod's *Needs* block does not describe the real consumption.
-- The IMGUI panels need a CJK-capable font on the system; without one, Chinese text renders as boxes (the self-check prints the font it got).
+- Manual picks are not persisted across restarts; automatic picking is recomputed every time.
+- A liquid slot shows the layer that will actually be poured; liquids this mod doesn't recognise (e.g. a third-party `Blood O+`) are shown by raw id.
+- If every usable bottle is favourited and makeshift bottles are disabled, that liquid is lost — the pre-craft prediction says so in advance.
+- Contents that don't fit into the new container are dropped at your feet; this mod does not try to stuff them into your backpack.
+- If another mod takes over the craft entirely (e.g. `prosthetics` with a titanium hand), the *Needs* block does not describe the real consumption.
+- The IMGUI panels rely on a system CJK font; with none available Chinese renders as boxes (the self-check prints the font it got).
 
 ## Build from source
-
-Requires the .NET SDK and a local copy of the game (the game's assemblies are referenced but **not** redistributed here).
 
 ```powershell
 dotnet build src\OptimisedCraftingSystem.csproj -c Release -p:GameDir="D:\Steam\steamapps\common\Casualties Unknown Demo"
 ```
 
-`src/OptimisedCraftingSystem.csproj` resolves every game assembly from `$(GameDir)\CasualtiesUnknown_Data\Managed` with `<Private>false</Private>`, targets `netstandard2.1`, and produces `src\bin\Release\netstandard2.1\OptimisedCraftingSystem.dll`. Copy that file into your `BepInEx\plugins\`.
+Targets `netstandard2.1`; game assemblies are referenced from `$(GameDir)\CasualtiesUnknown_Data\Managed` with `<Private>false</Private>` — **no game files are redistributed here**. Output: `src\bin\Release\netstandard2.1\OptimisedCraftingSystem.dll`.
 
-Layout: `src/Core/` (picking, storage planning, liquid routing, session state, localisation, settings), `src/UI/` (the two IMGUI windows), `src/Patches/` (Harmony patches), `src/Plugin.cs` (entry point).
+Layout: `src/Core/` (picking, storage planning, liquid routing, session state, localisation, settings), `src/UI/` (the two IMGUI windows), `src/Patches/` (Harmony patches), `src/Plugin.cs`.
 
 ## Credits & license
 
-- Original mod this project derives from: **BetterInventoryLogic**, by **BalaurBohemianBroken**, licensed **CC BY 4.0**.
-- This mod is released under **CC BY-SA 4.0** (compatible with the original licence). See [LICENSE](LICENSE) and [NOTICE.md](NOTICE.md) for the full attribution and for what is reused versus independently implemented.
-- Game content and assets belong to their respective owners; no game files are distributed in this repository.
+- Derivative of **BetterInventoryLogic** by **BalaurBohemianBroken** (**CC BY 4.0**).
+- Released under **CC BY-SA 4.0**. Attribution and the reused-vs-independent boundary are spelled out in [NOTICE.md](NOTICE.md); licence text in [LICENSE](LICENSE).
+- Game content and assets belong to their respective owners; this repository contains no game files.
+
+Deeper documentation (per-change evidence, before/after comparisons) is in [docs/](docs/).
