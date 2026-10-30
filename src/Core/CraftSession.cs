@@ -68,6 +68,77 @@ namespace OptimisedCraftingSystem
         private static string _liquidId;
         private static float _liquidMl;
 
+        /// <summary>
+        /// 联机（主机权威）时"这次合成刚生成的那件产物"。
+        ///
+        /// 为什么需要记住它：单机里 `Recipe.TryMake` 的顺序是「先扣材料 → 再生成产物」，
+        /// 所以内容物救援（`ContainerRescue`）可以等产物被 `AutoPickUpItem` 捡起时再装进去；
+        /// Together 的 `CraftCommit.Commit` 顺序**反了** —— 先 `RecipeResult_SpawnResult` 并
+        /// `AutoPickUpItem`，之后才逐个 `RecipeItem.UseItem` 扣材料。等材料真的被消耗时，
+        /// 产物早已生成完毕，晚到的内容物只能自己找它装 —— 那就是这里记下的那件。
+        /// </summary>
+        internal static Item MpResultItem;
+
+        /// <summary>
+        /// 联机（主机）时：这一次合成**会不会**从被消耗的容器里救出内容物（固体或液体）。
+        ///
+        /// 为什么要在合成**开始前**就判断出来：Together 的顺序是"先生成产物、后扣材料"，
+        /// 产物在内容物被摘出来之前就已经进了背包/容器。而原版 `Container.LoadItem` 拒绝把东西
+        /// 装进"本身就装在别的容器里"的容器（`Container.cs:116-123` 的 bag in a bag 判定），
+        /// 所以一旦产物被预测放进背包，随后的内容物交付必然被拒、只能掉在地上。
+        ///
+        /// 这里提前预判：只要这次合成会救援，就让产物留在手上（跳过存放预测），
+        /// 等 `ContainerRescue.BeforeConsume` 把内容物装进去 —— 这样"新容器装内容物"才真的成立。
+        /// </summary>
+        internal static bool MpExpectRescue;
+
+        /// <summary>
+        /// 按当前选材结果推演"这次合成会不会发生内容物救援"。只在联机（主机）路径里调用，
+        /// 单机不需要（单机的顺序本来就是先扣料、后生成，救援不依赖这个预判）。
+        /// </summary>
+        internal static void EvaluateMpRescue()
+        {
+            MpExpectRescue = false;
+            Recipe recipe = _recipe;
+            List<Item> selection = _selection;
+            if (recipe == null || recipe.items == null || selection == null) return;
+
+            int n = Mathf.Min(recipe.items.Count, selection.Count);
+            for (int i = 0; i < n; i++)
+            {
+                RecipeItem slot = recipe.items[i];
+                Item it = selection[i];
+                if (slot == null || it == null) continue;
+                // 只有"整件消耗的固体"才会走救援（液体槽只是倒出液体，瓶子还在）
+                if (slot.isLiquid || !slot.destroyItem) continue;
+
+                if (ModSettings.CarryContainerContents)
+                {
+                    Container c = it.container;
+                    if (c != null && c.itemCount > 0) { MpExpectRescue = true; return; }
+                }
+                if (ModSettings.RescueConsumedLiquid)
+                {
+                    WaterContainerItem wc = it.GetComponent<WaterContainerItem>();
+                    if (wc != null && wc.CurrentTotal > 0f) { MpExpectRescue = true; return; }
+                }
+            }
+        }
+
+        /// <summary>
+        /// 联机（主机）时记下"这次合成刚生成的产物"（见 <see cref="MpResultItem"/> 的说明）。
+        /// 只在会话里、且物品 id 与配方产物一致时记第一件 —— 会话期间 `AutoPickUpItem` 还会被
+        /// 临时瓶、内容物等其它东西调用，不能都当成产物。
+        /// </summary>
+        internal static void NoteMpResult(Item item)
+        {
+            if (item == null || MpResultItem != null) return;
+            Recipe recipe = _recipe;
+            if (recipe == null || recipe.result == null) return;
+            if (item.id != recipe.result.id) return;
+            MpResultItem = item;
+        }
+
         internal static bool Active => _recipe != null;
         internal static Recipe CurrentRecipe => _recipe;
         internal static List<Item> Selection => _selection;
@@ -144,10 +215,25 @@ namespace OptimisedCraftingSystem
             return LiquidPick.TryGetValue(slot, out id) ? id : null;
         }
 
+        /// <summary>
+        /// "指定倒哪一层液体"这个能力在当前上下文里是否成立。
+        ///
+        /// 联机客户端不成立：发给主机的只有物品 id（`CraftCommit.ids`），服务器用原版
+        /// `RecipeItem.UseItem` 按 stack 顺序倒第一层，客户端的层选择根本传不过去。
+        /// 与其在界面上显示一个不会兑现的层，不如统一按原版顺序 —— 见 `QualityModel.Liquid`。
+        /// </summary>
+        internal static bool LiquidPickAllowed => !(MpBridge.Enabled && !MpBridge.Authoritative);
+
         /// <summary>指定/取消某个槽位的液体层（传 null 或空串＝回到「按原版顺序自动取」）。</summary>
         internal static void SetLiquidPick(RecipeItem slot, string liquidId)
         {
             if (slot == null) return;
+            if (!LiquidPickAllowed)
+            {
+                // 联机客户端：记了也没用（服务器不认），干脆不记，免得界面与实际不一致
+                LiquidPick.Remove(slot);
+                return;
+            }
             if (string.IsNullOrEmpty(liquidId)) LiquidPick.Remove(slot);
             else LiquidPick[slot] = liquidId;
         }
@@ -235,6 +321,8 @@ namespace OptimisedCraftingSystem
             if (recipe == null) return false;
 
             _recipe = recipe;
+            MpResultItem = null;   // 新会话：上一件联机产物的引用必须丢掉，否则内容物会被装进上次的东西
+            MpExpectRescue = false;
             try
             {
                 if (recipe.result != null && !recipe.result.isLiquid)
@@ -390,6 +478,8 @@ namespace OptimisedCraftingSystem
             _liquidPending = false;
             _liquidId = null;
             _liquidMl = 0f;
+            MpResultItem = null;
+            MpExpectRescue = false;
             StoredAt.Clear();
         }
 

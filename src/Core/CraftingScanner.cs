@@ -40,14 +40,19 @@ namespace OptimisedCraftingSystem
         /// <summary>
         /// 收集当前可用于合成的全部物品（身上 + 容器内容物 + 可穿戴；可选含手边地面）。
         /// 返回新列表，调用方随意修改。
+        ///
+        /// 联机（Casualties Together）时会再过滤一次：只留下**已同步且够得着**的物品，
+        /// 与 Together 自己的 `CraftCommit.Collect(body, SyncedReachable)` 池子保持一致。
+        /// 不过滤就会出现"界面算得出、点下去服务器回 Missing"这种最难解释的联机 bug。
         /// </summary>
         internal static List<Item> Gather(bool includeFloor)
         {
             if (_scanCache != null && _scanFrame == Time.frameCount && _scanWithFloor == includeFloor)
-                return new List<Item>(_scanCache);
+                return new List<Item>(MultiplayerSafe(_scanCache, includeFloor));
 
             List<Item> list = new List<Item>();
             Body body = PlayerBody;
+            _floorSeen.Clear();
             if (body != null)
             {
                 try
@@ -70,7 +75,43 @@ namespace OptimisedCraftingSystem
             _scanCache = list;
             _scanFrame = Time.frameCount;
             _scanWithFloor = includeFloor;
-            return new List<Item>(list);
+            return new List<Item>(MultiplayerSafe(list, includeFloor));
+        }
+
+        // ————————————————————————————————————————————————————————————
+        // 联机池过滤（与 Together 的 SyncedReachable 池对齐）
+        // ————————————————————————————————————————————————————————————
+
+        private static List<Item> _mpCache;
+        private static int _mpFrame = -1;
+        private static bool _mpWithFloor;
+
+        /// <summary>
+        /// 联机时把扫描结果裁成"本次合成真的能提交的物品"。
+        /// 单机（或没装联机模组）时原样返回同一个列表引用，不复制、不额外分配。
+        /// </summary>
+        private static List<Item> MultiplayerSafe(List<Item> raw, bool includeFloor)
+        {
+            if (raw == null) return null;
+            if (!MpBridge.Enabled) return raw;
+
+            if (_mpCache != null && _mpFrame == Time.frameCount && _mpWithFloor == includeFloor)
+                return _mpCache;
+
+            Body body = PlayerBody;
+            List<Item> kept = new List<Item>(raw.Count);
+            for (int i = 0; i < raw.Count; i++)
+            {
+                Item it = raw[i];
+                // 地面物品要额外过"够得着"判定；身上的物品 Together 只要求已同步。
+                bool floor = it != null && _floorSeen.Contains(it);
+                if (MpBridge.Usable(it, floor, body)) kept.Add(it);
+            }
+
+            _mpCache = kept;
+            _mpFrame = Time.frameCount;
+            _mpWithFloor = includeFloor;
+            return kept;
         }
 
         /// <summary>把 10 米内、通过可拾取判定（DoPickupCheck，静默模式）的地面物品加进列表。</summary>
@@ -90,7 +131,12 @@ namespace OptimisedCraftingSystem
                 bool ok;
                 try { ok = body.DoPickupCheck(item, true); }
                 catch { ok = false; }
-                if (ok) list.Add(item);
+                if (ok)
+                {
+                    list.Add(item);
+                    // 记录"这一帧确实在地面上且可拾取"：位置判定（PlaceOf）与联机池过滤都靠它
+                    _floorSeen.Add(item);
+                }
             }
         }
 
@@ -166,15 +212,13 @@ namespace OptimisedCraftingSystem
         /// <summary>物品是否已通过本次扫描确认为"手边地面"上的东西（列表里没扫到地面时用来兜底）。</summary>
         internal static bool MarkedAsFloor(Item item) => item != null && _floorSeen.Contains(item);
 
+        /// <summary>
+        /// 这一帧扫描时确实落在"手边地面"上、且通过可拾取判定的物品。
+        /// 由 `AppendFloor` 维护（每次重新扫描前清空）；位置判定与联机池过滤都读它 ——
+        /// 之前这里有个没人调用的 `NoteFloorItems`，导致"地面"判定永远是 false，
+        /// 联机过滤也就无法区分"地面物品要额外查够不够得着"。
+        /// </summary>
         private static readonly HashSet<Item> _floorSeen = new HashSet<Item>();
-
-        /// <summary>记录一批"这一帧确实在地面上（且可拾取）"的物品，供 PlaceOf 兜底判定。</summary>
-        internal static void NoteFloorItems(List<Item> items)
-        {
-            _floorSeen.Clear();
-            if (items == null) return;
-            foreach (Item it in items) if (it != null) _floorSeen.Add(it);
-        }
 
         /// <summary>物品在哪个槽位（找不到返回 -1）。</summary>
         internal static int SlotIndexOf(Item item)

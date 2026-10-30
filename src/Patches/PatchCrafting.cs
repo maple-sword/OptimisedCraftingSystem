@@ -22,6 +22,9 @@ namespace OptimisedCraftingSystem
         private static bool Prefix(Recipe __instance, ref List<Item> __result)
         {
             if (!ModSettings.PickEnabled) return true;
+            // 联机里这条方法由 Together 的 `CraftCommit_GetItems`（前缀优先级 800）先接管并 return false，
+            // 本来也轮不到我们；这里再挡一次，是为了防止 Together 某天改了优先级时两套算法各算一遍。
+            if (MpBridge.Active) return true;
             if (__instance == null || __instance.items == null || __instance.items.Count == 0) return true;
 
             try
@@ -62,6 +65,8 @@ namespace OptimisedCraftingSystem
         private static bool Prefix(Recipe __instance, ref List<Item> __result)
         {
             if (!ModSettings.PickEnabled) return true;
+            // 联机里同上：预览由 Together 的 `CraftCommit_GetItemsThorough` 接管（见 `Mp\PatchTogetherCraft.cs`）。
+            if (MpBridge.Active) return true;
             if (__instance == null || __instance.items == null || __instance.items.Count == 0) return true;
 
             try
@@ -90,6 +95,12 @@ namespace OptimisedCraftingSystem
         [HarmonyPriority(Priority.Low)]
         private static void Prefix(Recipe __instance)
         {
+            // 联机里 `Recipe.TryMake` 不再被调用（`PlayerCamera.TryCraft` 被 Together 换成了
+            // `CraftCommit.TryClick`，权威端由 `CraftCommit.Commit` 自己生成产物并扣材料）。
+            // 万一有别的模组在联机里直接调 TryMake，我们也不能开会话 ——
+            // 那会在客户端本地扣材料、本地放产物，必然与主机不同步。
+            if (MpBridge.Active) return;
+
             try { CraftSession.Begin(__instance); }
             catch (System.Exception e) { Plugin.Log?.LogWarning("[Craft] 会话开启失败：" + e.Message); }
         }
@@ -98,6 +109,7 @@ namespace OptimisedCraftingSystem
         [HarmonyPriority(Priority.High)]
         private static void Postfix()
         {
+            if (MpBridge.Active) return;
             try { CraftSession.End(); }
             catch { }
         }

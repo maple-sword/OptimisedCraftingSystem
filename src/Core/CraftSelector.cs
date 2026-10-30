@@ -74,7 +74,11 @@ namespace OptimisedCraftingSystem
                     // 只要这个槽位**会把容器整件用掉**、且设置开着，就让它参与选择 ——
                     // 里面的东西会在消耗前搬出来（`ContainerRescue`），合成完装进新容器、装不下掉地上。
                     // 不整件消耗的槽位（当工具用）仍按原版拒绝：那种情况下它本来也不该被"用掉"。
-                    if (!ModSettings.CarryContainerContents || !ConsumesUp(slot)) return false;
+                    //
+                    // **联机时一律按原版拒绝**：Together 的权威端会用原版 `GetMatchingItem` 再校验一次
+                    // 提交上来的 ids（`CraftCommit.Commit` → `CheckIfTheseItemsAreEnoughForTheRecipe`），
+                    // 装满的容器在那边必然被拒 —— 客户端放行只会让整次合成白点一次并回一条 Missing。
+                    if (MpBridge.Active || !ModSettings.CarryContainerContents || !ConsumesUp(slot)) return false;
                 }
             }
 

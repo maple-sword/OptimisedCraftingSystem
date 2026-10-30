@@ -1,5 +1,8 @@
 # Optimised Crafting System
 
+> **注意**：本文件描述 v1.0.0。v1.1.0（含 Casualties Together 联机适配、39 项设置）的中文说明见 [README.zh-CN.md](README.zh-CN.md)。
+
+
 > Know before you craft **what it will cost and where the result goes**.
 
 The vanilla crafting screen only lists what a recipe *needs*. Everything else you find out the hard way: which bottle gets drained, how much durability disappears, which container swallows the result, whether the parts in your bag survive. **This mod fills in all of it — and lets you override every single decision.**

@@ -92,6 +92,15 @@ namespace OptimisedCraftingSystem
             Container c = item.container;
             if (c != null && c.itemCount > 0 && ModSettings.CarryContainerContents)
                 Suspend(c, item);
+
+            // ③ 联机（主机权威）时顺序是反的：Together 的 `CraftCommit.Commit` 先生成产物并
+            // `AutoPickUpItem`，之后才逐个 `RecipeItem.UseItem` 扣材料。等走到这里时新容器已经生成，
+            // 所以立刻把刚搬出来的内容物交给它；单机这条分支不会走（那时产物还没生成）。
+            if (MpBridge.Authoritative && CraftSession.MpResultItem != null)
+            {
+                try { Deliver(CraftSession.MpResultItem); }
+                catch (System.Exception e) { Plugin.Log?.LogWarning("[Rescue] 联机内容物交付失败：" + e.Message); }
+            }
         }
 
         /// <summary>把容器里的东西全部脱离出来并冻结，等新容器出现。</summary>
@@ -210,34 +219,49 @@ namespace OptimisedCraftingSystem
             if (_pending.Count == 0) return 0;
 
             int delivered = 0;
-            List<Item> left = new List<Item>();   // 没装进去的（按原顺序留在队列里）
-
-            foreach (Item it in _pending)
-            {
-                if (it == null) continue;
-                bool ok = false;
-                try
-                {
-                    // 原版 `Container.LoadItem` 不返回成功与否（重量、距离、容器套容器都可能把它挡下来），
-                    // 所以调用完**按父级核对**，没真装进去的留在队列里等 Flush 落地 ——
-                    // 否则会有一件东西既不在容器里、又不在队列里，等于凭空消失。
-                    if (dst.CanHoldItem(it))
-                    {
-                        dst.LoadItem(it);
-                        ok = it.transform.parent == dst.transform;
-                    }
-                }
-                catch (System.Exception e)
-                {
-                    Plugin.Log?.LogWarning("[Rescue] 装进新容器失败：" + e.Message);
-                }
-
-                if (ok) delivered++;
-                else left.Add(it);
-            }
-
+            // 先把队列整体取出来、再逐件决定去留：中途抛异常时**已经装进新容器的**绝不能再留在队列里，
+            // 否则会话收尾的 `Flush` 会把它们从新容器里拽出来丢到地上（审查发现的真实风险）。
+            List<Item> pending = new List<Item>(_pending);
             _pending.Clear();
-            _pending.AddRange(left);
+
+            int i = 0;
+            try
+            {
+                for (; i < pending.Count; i++)
+                {
+                    Item it = pending[i];
+                    if (it == null) continue;
+
+                    bool ok = false;
+                    try
+                    {
+                        // 原版 `Container.LoadItem` 不返回成功与否（重量、距离、容器套容器都可能把它挡下来），
+                        // 所以调用完**按父级核对**，没真装进去的留在队列里等 Flush 落地 ——
+                        // 否则会有一件东西既不在容器里、又不在队列里，等于凭空消失。
+                        if (dst.CanHoldItem(it))
+                        {
+                            dst.LoadItem(it);
+                            ok = it.transform.parent == dst.transform;
+                        }
+                    }
+                    catch (System.Exception e)
+                    {
+                        Plugin.Log?.LogWarning("[Rescue] 装进新容器失败：" + e.Message);
+                    }
+
+                    if (ok) delivered++;
+                    else _pending.Add(it);
+                }
+            }
+            catch (System.Exception e)
+            {
+                // 兜底：没处理到的（含当前这一件）全部按"没装进去"处理，交回队列等 Flush
+                Plugin.Log?.LogWarning("[Rescue] 内容物交付中断，剩余物品改为落地：" + e.Message);
+                for (int j = i; j < pending.Count; j++)
+                {
+                    if (pending[j] != null) _pending.Add(pending[j]);
+                }
+            }
 
             if (delivered > 0)
             {

@@ -26,6 +26,9 @@ namespace OptimisedCraftingSystem
             // 标记带帧号，所以即使别人的后缀抛异常把我们的复位跳过，跨帧也不会误判。
             if (!CraftText.ConsumePanelRefresh()) return;
             if (!ModSettings.ShowConsumption) return;
+            // 联机里关掉适配、或关掉"联机也用智能选材"时：本模组不替玩家挑材料，也就不该贴消耗块 ——
+            // 那块内容是按本模组算法算的，与实际由 Together 原版匹配决定的消耗会对不上。
+            if (MpBridge.Active && !MpBridge.SmartPickActive) return;
             if (recipe == null || __result == null) return;
 
             try

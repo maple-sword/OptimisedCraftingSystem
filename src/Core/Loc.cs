@@ -90,6 +90,17 @@ namespace OptimisedCraftingSystem
                 { "ocs.stored.prefix",          ("已存放：", "Stored: ") },
 
                 // ——— 物品提示（Shift 展开） ———
+                // ——— 联机（Casualties Together）———
+                { "ocs.mp.state.absent",        ("单机（未装联机模组）", "single-player (no multiplayer mod)") },
+                { "ocs.mp.state.offline",       ("单机（联机模组待机）", "single-player (multiplayer mod idle)") },
+                { "ocs.mp.state.host",          ("联机 · 主机", "multiplayer · host") },
+                { "ocs.mp.state.client",        ("联机 · 客户端", "multiplayer · client") },
+                { "ocs.mp.state.dedicated",     ("联机 · 专用服务器", "multiplayer · dedicated server") },
+                { "ocs.mp.pick.note",           ("联机中：材料由本模组挑好后提交给主机校验", "Online: this mod picks the materials and submits them to the host") },
+                { "ocs.mp.store.client",        ("由主机决定（客户端不能改存放）", "decided by the host (clients cannot change storage)") },
+                { "ocs.mp.store.host.note",     ("联机中：本机是主机，存放预测仍然生效", "Online: you are the host, so the prediction still applies") },
+                { "ocs.mp.badge",               ("[联机]", "[Online]") },
+
                 { "ocs.tip.contents",           ("内容物：", "Contents: ") },
                 { "ocs.tip.contents.weight",    ("内容物总重：{0:0.##} kg", "Contents weight: {0:0.##} kg") },
                 { "ocs.tip.contents.empty",     ("内容物：空", "Contents: empty") },

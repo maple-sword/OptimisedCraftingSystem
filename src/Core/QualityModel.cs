@@ -128,7 +128,10 @@ namespace OptimisedCraftingSystem
                 // 复刻 UseItem：按 stack 顺序取第一个满足性质的那一层。
                 // 例外是玩家在候选表里手动指定了某一层（混装瓶里想倒牛奶而不是水）：
                 // 先按指定层找，找不到再按原版顺序回落 —— 指定层不满足性质时绝不硬倒。
-                string wanted = CraftSession.GetLiquidPick(slot);
+                //
+                // 联机客户端不认这个指定：提交给主机的只有物品 id，服务器用原版 `RecipeItem.UseItem`
+                // 按 stack 顺序倒第一层。与其在界面上显示一个不会兑现的层，不如按原版顺序算。
+                string wanted = CraftSession.LiquidPickAllowed ? CraftSession.GetLiquidPick(slot) : null;
                 bool found = false;
                 liquidId = null; ml = 0f; availableMl = 0f;
                 for (int pass = string.IsNullOrEmpty(wanted) ? 1 : 0; pass < 2 && !found; pass++)

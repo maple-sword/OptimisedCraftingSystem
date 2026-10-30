@@ -69,6 +69,11 @@ namespace OptimisedCraftingSystem
         internal static bool WindowIncludeFloor = true;  // ocs.window.floor
         internal static KeyCode WindowKey = KeyCode.M;   // ocs.key.window
 
+        // 联机（Casualties Together / CasualtiesMP）
+        internal static bool MpEnabled = true;      // ocs.mp.enable
+        internal static bool MpSmartPick = true;    // ocs.mp.smart_pick
+        internal static bool MpHostStore = true;    // ocs.mp.host_store
+
         /// <summary>当前这一次 DefaultSettings() 调用产生的设置对象（每次重建，见下方 Postfix）。</summary>
         internal static readonly List<Setting> All = new List<Setting>();
 
@@ -176,8 +181,10 @@ namespace OptimisedCraftingSystem
             // ——— 材料消耗：被整件消耗掉的容器（玩家需求）———
             new BoolDef { Name = "ocs.craft.container_contents", Default = true,
                 Zh = "装着东西的容器也能当材料", En = "Allow filled containers as ingredients",
-                ZhDsc = "原版要求被消耗的容器必须全空（`RecipeItem.cs:58-61`），所以装满东西的袋子根本不会被选中。开启后装着东西的容器也能当材料：内容物会在消耗前搬出来，新做出来的容器能装多少装多少，装不下的掉在脚边。",
-                EnDsc = "Vanilla refuses to consume a container that still holds items (`RecipeItem.cs:58-61`). With this on, filled containers can be used as ingredients: the contents are moved out first, loaded into the newly crafted container, and whatever does not fit is dropped on the ground." },
+                ZhDsc = "原版要求被消耗的容器必须全空（`RecipeItem.cs:58-61`），所以装满东西的袋子根本不会被选中。开启后装着东西的容器也能当材料：内容物会在消耗前搬出来，新做出来的容器能装多少装多少，装不下的掉在脚边。\n" +
+                        "**联机时不生效**：联机模组（Casualties Together）的主机会用原版规则再校验一次提交的材料，装满的容器必然被拒 —— 放行只会让整次合成白点一次。",
+                EnDsc = "Vanilla refuses to consume a container that still holds items (`RecipeItem.cs:58-61`). With this on, filled containers can be used as ingredients: the contents are moved out first, loaded into the newly crafted container, and whatever does not fit is dropped on the ground.\n" +
+                        "**Does not apply in multiplayer**: the Casualties Together host re-validates submitted ingredients with vanilla rules, so a filled container is always rejected — allowing it would only burn one craft attempt." },
             new BoolDef { Name = "ocs.craft.prefer_empty_bottle", Default = true,
                 Zh = "优先消耗空瓶子", En = "Prefer empty bottles",
                 ZhDsc = "需要把液体容器整件消耗掉时，优先挑里面没装液体的：液体是玩家的资源，不该因为瓶子便宜就一起消耗掉。",
@@ -186,6 +193,26 @@ namespace OptimisedCraftingSystem
                 Zh = "消耗瓶子前把液体装进临时瓶", En = "Save liquid from consumed bottles",
                 ZhDsc = "原版把瓶子当材料消耗时，瓶里的液体会跟着一起消失（`RecipeItem.cs:167-175` 只处理固体容器）。开启后会在消耗前把液体倒进现场做的临时瓶（与原版一致，300 秒后连瓶带液体销毁），一点都不会丢。",
                 EnDsc = "Vanilla destroys the liquid inside a bottle used as an ingredient (`RecipeItem.cs:167-175`). With this on, the liquid is poured into a makeshift bottle first (destroyed after 300 s, like vanilla) so nothing is lost." },
+
+            // ——— 联机（Casualties Together）———
+            new BoolDef { Name = "ocs.mp.enable", Default = true,
+                Zh = "联机适配：启用", En = "Multiplayer: enable integration",
+                ZhDsc = "检测到联机模组（Casualties Together / CasualtiesMP）且正在联机时，把本模组的功能接到它自己的合成提交流程上。\n" +
+                        "关闭后联机里完全退回 Together 的原版行为（智能选材、消耗提示、存放预测都不介入），单机不受影响。",
+                EnDsc = "When a multiplayer (Casualties Together / CasualtiesMP) session is detected, hook this mod into its crafting-commit flow.\n" +
+                        "Turn off to leave multiplayer entirely to Together (smart picking, consumption hints and storage prediction stay out of it). Single-player is unaffected." },
+            new BoolDef { Name = "ocs.mp.smart_pick", Default = true,
+                Zh = "联机适配：仍然按智能选材提交", En = "Multiplayer: submit smart-picked materials",
+                ZhDsc = "联机合成时，先把材料按本模组的成本算法挑好，再把这一套材料作为提交内容发给主机校验。\n" +
+                        "关闭后由 Together 按池子顺序挑（等价于原版），界面上也不再显示本模组的选材结果。",
+                EnDsc = "Pick the ingredients with this mod's cost model first, then submit exactly those to the host for validation.\n" +
+                        "Off lets Together pick in pool order (vanilla-equivalent) and the UI stops showing this mod's picks." },
+            new BoolDef { Name = "ocs.mp.host_store", Default = true,
+                Zh = "联机适配：主机按预测存放并抢救内容物", En = "Multiplayer: host applies prediction and rescues contents",
+                ZhDsc = "只有主机（权威端）才真的决定产物去向，所以这两项能力只在主机上生效：按界面预测存放产物、容器被消耗前先搬出内容物。\n" +
+                        "客户端无法改派存放（产物由主机生成并同步），界面会写「由主机决定」。关闭后主机也按 Together 原版处理。",
+                EnDsc = "Only the host decides where results go, so these two features work on the host only: follow the predicted storage, and move container contents out before the container is consumed.\n" +
+                        "Clients cannot redirect storage (the host spawns and syncs the result); the UI says so. Off leaves the host on Together's vanilla behaviour." },
 
             // ——— 界面 ———
             new BoolDef { Name = "ocs.ui.consumption", Default = true,
@@ -453,6 +480,9 @@ namespace OptimisedCraftingSystem
                 case "ocs.tip.container_weight": ContainerWeightInTip = value; break;
                 case "ocs.window.enabled": WindowEnabled = value; break;
                 case "ocs.window.floor": WindowIncludeFloor = value; break;
+                case "ocs.mp.enable": MpEnabled = value; break;
+                case "ocs.mp.smart_pick": MpSmartPick = value; break;
+                case "ocs.mp.host_store": MpHostStore = value; break;
             }
         }
 

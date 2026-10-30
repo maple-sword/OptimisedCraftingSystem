@@ -65,6 +65,12 @@ namespace OptimisedCraftingSystem.UI
 
         internal static bool IsOpen => _open;
 
+        /// <summary>
+        /// 联机客户端（不是权威端）：产物由主机生成并同步，所以"存放地点"只能展示、不能改派。
+        /// 主机与单机都返回 false，界面与控制行为完全不变。
+        /// </summary>
+        internal static bool MpClient => MpBridge.Enabled && !MpBridge.Authoritative;
+
         /// <summary>自检用：实际拿到的中文字体名（null 表示没找到，界面会退回默认字体）。</summary>
         internal static string FontName
         {
@@ -161,6 +167,13 @@ namespace OptimisedCraftingSystem.UI
             GUILayout.EndHorizontal();
 
             GUILayout.Label(Loc.T("ocs.win.hint"), _small);
+            // 联机状态：装没装联机模组、现在是不是主机/客户端。客户端还会明确写出"存放由主机决定"，
+            // 免得玩家看着本模组的预测以为可以改派。
+            if (MpBridge.Present)
+            {
+                GUILayout.Label(Loc.T("ocs.mp.badge") + " " + MpBridge.StateText +
+                                (MpClient ? " · " + Loc.T("ocs.mp.store.client") : string.Empty), _small);
+            }
 
             _scroll = GUILayout.BeginScrollView(_scroll);
             if (_tab == 0) DrawMaterialsTab();
@@ -538,10 +551,21 @@ namespace OptimisedCraftingSystem.UI
         {
             if (recipe.result == null) return;
 
+            // 联机客户端：产物由主机生成并同步，客户端既算不准落点也改不了它 —— 只显示结论，不给入口
+            bool locked = MpClient;
+
             GUILayout.BeginHorizontal();
             GUILayout.Label(Loc.T("ocs.craft.store"), _head, GUILayout.Width(120f));
             string target;
             try { target = CraftText.ResultDestination(recipe); } catch { target = "?"; }
+            if (locked)
+            {
+                GUILayout.Label(target, _label, GUILayout.Width(420f));
+                GUILayout.EndHorizontal();
+                GUILayout.Label(Loc.T("ocs.mp.pick.note"), _small);
+                return;
+            }
+
             // 点去向文字展开存放目标表（自动 / 临时瓶 / 各容器）
             if (GUILayout.Button(target + "  ▾", _destOpen ? _tabOn : _button, GUILayout.Width(420f)))
                 ToggleDest();
@@ -760,20 +784,24 @@ namespace OptimisedCraftingSystem.UI
                 GUILayout.Label(Loc.T("ocs.craft.store"), _head, GUILayout.Width(80f));
                 GUILayout.Label(_compactTarget ?? "?", _label, GUILayout.Width(280f));
 
-                if (GUILayout.Button(Loc.T("ocs.craft.change") + "  ▾", _destOpen ? _tabOn : _button, GUILayout.Width(140f)))
-                    ToggleDest();
-
-                if (recipe.result.isLiquid &&
-                    GUILayout.Button(Loc.T("ocs.store.tempbottle"), _button, GUILayout.Width(140f)))
+                // 联机客户端：产物由主机生成，改派按钮点了也不会生效，直接不给入口
+                if (!MpClient)
                 {
-                    CraftSession.ForceTempBottle = true;
-                    CraftSession.ManualBottleInstance = 0;
-                    ClosePickers();
-                    RefreshPanel();
+                    if (GUILayout.Button(Loc.T("ocs.craft.change") + "  ▾", _destOpen ? _tabOn : _button, GUILayout.Width(140f)))
+                        ToggleDest();
+
+                    if (recipe.result.isLiquid &&
+                        GUILayout.Button(Loc.T("ocs.store.tempbottle"), _button, GUILayout.Width(140f)))
+                    {
+                        CraftSession.ForceTempBottle = true;
+                        CraftSession.ManualBottleInstance = 0;
+                        ClosePickers();
+                        RefreshPanel();
+                    }
                 }
                 GUILayout.EndHorizontal();
 
-                if (_destOpen) DrawDestList(recipe, pool, CompactListWidth);
+                if (_destOpen && !MpClient) DrawDestList(recipe, pool, CompactListWidth);
             }
 
             GUILayout.EndArea();
@@ -794,7 +822,7 @@ namespace OptimisedCraftingSystem.UI
             if (recipe.result != null)
             {
                 h += RowH;
-                if (_destOpen) h += PickListHeight(DestCount(recipe));
+                if (_destOpen && !MpClient) h += PickListHeight(DestCount(recipe));
             }
             h += 10f;
 

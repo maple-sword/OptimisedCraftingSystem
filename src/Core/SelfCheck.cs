@@ -86,11 +86,37 @@ namespace OptimisedCraftingSystem
                 // 是因为它失效只是退回原版行为（液体随瓶子消失），不会让整个模组失灵。
                 CheckPatch(typeof(RecipeItem), "UseItem", false);
                 CheckPatch(typeof(Locale), "LoadLanguage", false);
+                ReportMultiplayer();
             }
             catch (Exception e)
             {
                 _done = true;
                 Plugin.Log?.LogWarning("[自检] 失败（不影响运行）：" + e);
+            }
+        }
+
+        /// <summary>
+        /// 联机（Casualties Together）状态一行报清：装没装、现在是不是联机、我们挂了哪几个补丁。
+        ///
+        /// 为什么必须单独报：联机里原版那四条关键补丁（`Recipe.GetItemsForRecipe` / `TryMake` 等）
+        /// 会被 Together 以更高优先级整体接管，日志里它们仍然显示"已挂"，但**实际不会执行** ——
+        /// 只看补丁表会得出错误结论。这里把真正生效的那一组（`CraftCommit.*` / `GetMatchingItem`）单独列出。
+        /// </summary>
+        private static void ReportMultiplayer()
+        {
+            try
+            {
+                string version = MpBridge.InstalledVersion;
+                string who = MpBridge.Present
+                    ? (string.IsNullOrEmpty(version) ? "Together（版本未知）" : "Together " + version)
+                    : "未安装";
+                Plugin.Log.LogInfo("[自检] 联机：" + who + "；当前" + MpBridge.StateText + "；" + MpBridge.DescribePatches());
+                if (MpBridge.Present && MpBridge.ProbeError != null)
+                    Plugin.Log.LogWarning("[自检] 联机桥探测有问题（相关功能会退回原版）：" + MpBridge.ProbeError);
+            }
+            catch (Exception e)
+            {
+                Plugin.Log?.LogWarning("[自检] 联机状态检查失败：" + e.Message);
             }
         }
 

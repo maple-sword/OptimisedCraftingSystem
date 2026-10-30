@@ -215,6 +215,12 @@ namespace OptimisedCraftingSystem
         internal static string ResultDestination(Recipe recipe)
         {
             if (recipe == null || recipe.result == null) return null;
+
+            // 联机客户端：产物由主机 `RecipeResult_SpawnResult` 生成后同步过来，客户端既算不准落点、
+            // 也没法改派（`Body.AutoPickUpItem` 只在主机上执行）。与其显示一个不会兑现的预测，
+            // 不如直接说实话 —— 这也是玩家最容易误解成"模组失效"的地方。
+            if (MpBridge.Enabled && !MpBridge.Authoritative) return Loc.T("ocs.mp.store.client");
+
             try
             {
                 if (recipe.result.isLiquid)

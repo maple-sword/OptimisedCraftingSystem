@@ -1,12 +1,14 @@
 # 编译产物
 bin/
 obj/
+publish/
+.vs/
 *.user
 *.suo
-.vs/
+*.log
+.DS_Store
+Thumbs.db
 # 游戏内运行时产物（本模组的日志抓取与证据）
 docs/logs/
 # 本地私有引用（游戏 DLL 不随仓库分发）
 lib/
-*.dll
-!dist/*.dll

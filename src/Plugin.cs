@@ -15,15 +15,23 @@ namespace OptimisedCraftingSystem
     /// Settings.DefaultSettings / Locale.LoadLanguage），同时存在时补丁会互相覆盖，
     /// 而且设置项会重名（本模组刻意沿用了原模组的设置名以保住汉化）。
     /// 所以进游戏时会检测原模组是否还在，若在就在日志里报错提醒删除。
+    ///
+    /// 1.1.0 起增加**联机适配**（Casualties Together / 程序集 CasualtiesMP，软依赖）：
+    /// 联机时游戏把合成整条链路换成了"客户端提交 ids、主机权威执行"，所以本模组另挂一组补丁，
+    /// 见 `Mp\PatchTogetherCraft.cs`；没装联机模组时这一整套完全不加载。
     /// </summary>
     [BepInPlugin(Guid, "Optimised Crafting System", Version)]
+    // CCL 是本工作区的默认前置（软依赖：没装也能跑，本模组不写注册表）。
+    [BepInDependency("net.cucorelib", BepInDependency.DependencyFlags.SoftDependency)]
+    // 联机模组：同样是软依赖。真正的挂钩在 `Mp\MpBridge.cs` 里用反射探测，避免直接引用其程序集。
+    [BepInDependency(MpBridge.Guid, BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
         /// <summary>BepInEx 插件 GUID（全小写、作者.模组名，已在 plugins 目录与本工作区确认未占用）。</summary>
         public const string Guid = "maple.optimisedcraftingsystem";
 
         /// <summary>模组版本，仅用于日志与问题定位。</summary>
-        public const string Version = "1.0.0";
+        public const string Version = "1.1.0";
 
         /// <summary>原模组 GUID：安装检查用。</summary>
         private const string LegacyGuid = "com.balaur.BetterLogic";
@@ -31,7 +39,8 @@ namespace OptimisedCraftingSystem
         internal static Plugin Instance;
         internal static ManualLogSource Log;
 
-        private Harmony _harmony;
+        /// <summary>本插件的 Harmony 实例（联机补丁需要用它动态安装，见 `Mp\MpBridge.cs`）。</summary>
+        internal static Harmony HarmonyInstance;
 
         private void Awake()
         {
@@ -40,8 +49,8 @@ namespace OptimisedCraftingSystem
 
             WarnIfLegacyPluginLoaded();
 
-            _harmony = new Harmony(Guid);
-            _harmony.PatchAll(typeof(Plugin).Assembly);
+            HarmonyInstance = new Harmony(Guid);
+            HarmonyInstance.PatchAll(typeof(Plugin).Assembly);
 
             Log.LogInfo("OptimisedCraftingSystem " + Version + " 已加载（Harmony 补丁已应用）。");
         }
@@ -50,6 +59,12 @@ namespace OptimisedCraftingSystem
         private void Update()
         {
             Hotkeys.Tick();
+            // 联机补丁：BepInEx 不能保证我们 Awake 时联机模组已经登记进 PluginInfos，
+            // 所以放在每帧入口重试一次（装好后只是一个 if，成本可忽略）。
+            // 必须排在 SelfCheck 之前：自检要报告"联机补丁挂了哪几个"。
+            MpBridge.EnsureInstalled();
+            // 合成会话看门狗：任何异常路径都不该让"被摘出来的内容物"永远冻着（见 Mp\PatchTogetherCraft.Tick）
+            PatchTogetherCraft.Tick();
             SelfCheck.Tick();
         }
 
@@ -63,7 +78,8 @@ namespace OptimisedCraftingSystem
         private void OnDestroy()
         {
             // HarmonyX 已弃用 UnpatchAll(string guid)，用 UnpatchSelf 精确撤销自己的补丁
-            _harmony?.UnpatchSelf();
+            HarmonyInstance?.UnpatchSelf();
+            HarmonyInstance = null;
         }
 
         /// <summary>
@@ -88,6 +104,12 @@ namespace OptimisedCraftingSystem
             {
                 // 记日志失败绝不该影响游戏
             }
+        }
+
+        /// <summary>同 <see cref="Evidence"/>，但每次调用都记（用于"一次交互一行"的事件，例如联机提交）。</summary>
+        internal static void EvidenceAlways(string line)
+        {
+            try { Log?.LogInfo("[实测] " + line); } catch { }
         }
 
         /// <summary>检测冲突模组：原版 BetterInventoryLogic 与本模组功能重叠，必须二选一。</summary>

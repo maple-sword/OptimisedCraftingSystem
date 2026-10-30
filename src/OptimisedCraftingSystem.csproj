@@ -17,15 +17,20 @@
       - 自建 GUI 用 IMGUI（IMGUIModule）+ 系统字体（TextRenderingModule），
         避免和 QoL Unknown 等模组争抢 UI 程序集。
     零 PackageReference + <NuGetAudit>false</NuGetAudit>：避免还原时联网。
+
+    1.1.0 起增加联机适配（Casualties Together / plugins\Together\CasualtiesMP.dll）。
+    **刻意不引用 CasualtiesMP.dll**：本模组对它是软依赖，直接引用会让没装联机模组的玩家
+    在程序集加载期就抛 FileNotFoundException；而且对方版本迭代快。运行时用反射探测，
+    见 Mp\MpBridge.cs 与 Mp\PatchTogetherCraft.cs。
   -->
   <PropertyGroup>
     <TargetFramework>netstandard2.1</TargetFramework>
     <AssemblyName>OptimisedCraftingSystem</AssemblyName>
     <RootNamespace>OptimisedCraftingSystem</RootNamespace>
     <LangVersion>latest</LangVersion>
-    <Version>1.0.0</Version>
+    <Version>1.1.0</Version>
     <!-- 本模组不往存档里写自定义类型，版本号固定只为了让构建产物可复现 -->
-    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <AssemblyVersion>1.1.0.0</AssemblyVersion>
     <Nullable>disable</Nullable>
     <NuGetAudit>false</NuGetAudit>
     <!-- 公开发布用：不生成 PDB 与调试目录，免得把作者本机的绝对路径写进 DLL -->

@@ -45,6 +45,14 @@ namespace OptimisedCraftingSystem.UI
                 return;
             }
 
+            // 联机里关掉适配、或关掉"联机也用智能选材"时，这块覆盖层也不显示：
+            // 它展示的是"本模组会怎么合成"，而结果实际由 Together 原版逻辑决定，留着只会误导。
+            if (MpBridge.Active && !MpBridge.SmartPickActive)
+            {
+                _dragging = false;
+                return;
+            }
+
             Matrix4x4 prev = GUI.matrix;
             try
             {

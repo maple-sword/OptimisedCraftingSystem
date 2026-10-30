@@ -18,11 +18,22 @@ namespace OptimisedCraftingSystem
         [HarmonyPriority(Priority.Low)]
         private static bool Prefix(Body __instance, Item item)
         {
+            // 联机（主机）时 Together 的顺序是"先生成产物、后扣材料"：把产物记在会话上，
+            // 等 `RecipeItem.UseItem` 真的消耗容器时，`ContainerRescue.BeforeConsume` 才有东西可交付。
+            if (CraftSession.Active && MpBridge.Authoritative) CraftSession.NoteMpResult(item);
+
             // 被消耗容器里搬出来的东西：新产物自己就是容器时立刻装进去（装不下的留在队里，
             // 会话收尾时落地）。这一句必须在下面所有守卫**之前** —— 它跟"存放预测"没关系，
             // 漏掉就会让那几件东西一直冻在手里。
             int delivered = 0;
             if (item != null) delivered = ContainerRescue.Deliver(item);
+
+            // 联机（主机）的"反序"专用守卫：Together 先捡起产物、之后才扣材料，所以此刻内容物还在
+            // 旧容器里没被搬出来。原版 `Container.LoadItem` 不允许往"本身装在别的容器里"的容器装东西
+            // （bag in a bag），因此这次要救援时先别执行存放预测 —— 让新容器留在手上，
+            // 等 `ContainerRescue.BeforeConsume` 把内容物装进去（`CraftSession.MpExpectRescue`）。
+            if (MpBridge.Authoritative && CraftSession.MpExpectRescue && item != null && item.container != null)
+                return true;
 
             if (PatchWaterContainerAddLiquid.Pouring) return true;     // 我们自己在倒液体 / 做临时瓶时让路
             if (!ModSettings.HonorPrediction) return true;             // 玩家关掉了"按预测执行存放"

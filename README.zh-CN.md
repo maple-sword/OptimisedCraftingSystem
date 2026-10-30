@@ -7,9 +7,35 @@
 本模组脱胎于 **BetterInventoryLogic**（作者 BalaurBohemianBroken，CC BY 4.0），但选材算法、存放逻辑、液体处理与界面全部重写：原模组是「合成后补救 + 偏好排序」，这一版是「**合成前算清 + 手动可改**」。
 
 - BepInEx 5（Mono）插件，GUID `maple.optimisedcraftingsystem`，程序集 `OptimisedCraftingSystem.dll`
+- 版本 **1.1.0**：1.0.0 的全部功能 + **联机（Casualties Together）适配**
 - 与原模组 `CraftingLogic.dll` **不能同时安装**（启动时会在日志里报错提醒）
-- 设置共 **36 项**，在游戏自己的设置界面里（「游戏」页 35 个开关 +「输入」页 1 个热键），存进游戏自己的 `settings.json`
+- 设置共 **39 项**，在游戏自己的设置界面里（「游戏」页 38 个开关 +「输入」页 1 个热键），存进游戏自己的 `settings.json`
 - 中英双语；许可 **CC BY-SA 4.0**（详见 [NOTICE.md](NOTICE.md)、[LICENSE](LICENSE)；原作品的 CC BY 4.0 全文存档于 [LICENSE-original.md](LICENSE-original.md)）
+
+## 联机适配（Casualties Together / `CasualtiesMP`）
+
+联机模组把合成整条链路换了人：客户端只提交「用哪几件」（`CraftCommit.ids`），真正的扣材料与产物生成在主机上
+（`CraftCommit.Commit`）。因此 1.0.0 那套挂在 `Recipe.GetItemsForRecipe` / `Recipe.TryMake` 上的补丁在联机里
+**一行都不会执行** —— 联机适配的目的就是把这四件事重新接上：
+
+| 能力 | 单机挂点 | 联机挂点 | 谁生效 |
+|---|---|---|---|
+| 智能选材 | `Recipe.GetItemsForRecipe(Thorough)` 前缀 | `CraftCommit.MatchList` 前缀（界面）+ `RecipeItem.GetMatchingItem` 前缀（提交） | 主机与客户端都生效 |
+| 消耗量提示 / 材料总览 / Shift 提示 | 本模组自算 | 不变（池子改为「已同步且够得着」的物品） | 两端都生效 |
+| 产物存放预测与改派 | `Body.AutoPickUpItem` 前缀 | 同一条补丁，但由主机在 `CraftCommit.Commit` 里触发 | 只有主机生效（客户端界面写「由主机决定」） |
+| 容器内容物救援 / 液体回收 | `RecipeItem.UseItem` 前缀（原版顺序：先扣料、后生成） | 同一条补丁，但要按 Together 的**反序**（先生成、后扣料）把内容物交给已生成的产物 | 只有主机生效、且只对主机玩家的合成生效 |
+
+三条边界（实现里写死了，别改）：
+
+1. **客户端只挑材料，不改状态**。客户端的库存改写只会造成 Desync；`CraftSession` 只在权威端（`Net.IsServer`）打开。
+2. **联机里「装满东西的容器当材料」按原版拒绝**。Together 的权威端会用原版 `RecipeItem.GetMatchingItem` 再校验一次
+   提交上来的 ids，客户端放行只会白点一次合成并收到 `Missing`。
+3. **混合液体选层、临时瓶去向**在主机上照常生效；客户端发不出"倒哪一层"，一律按原版顺序。
+
+联机适配有三个开关（设置界面「游戏」页）：`ocs.mp.enable`（总开关）、`ocs.mp.smart_pick`（联机也用智能选材）、
+`ocs.mp.host_store`（主机按预测存放并抢救内容物）。全部关掉 = 联机里完全退回 Together 原版行为，单机不受影响。
+
+未装联机模组、或在主菜单（未联机）时，以上全部不加载，行为与 1.0.0 完全一致。
 
 ## 与原模组（BetterInventoryLogic）的区别
 
@@ -81,7 +107,7 @@
 
 ## 设置
 
-全部 36 项都在游戏自己的设置界面里（35 个开关在「游戏」页、热键在「输入」页），存在游戏的 `settings.json`，**不用** BepInEx 的 `.cfg`。完整表格（含每项的作用与默认值）见 [docs/新功能说明与设置.md](docs/新功能说明与设置.md)。
+全部 39 项都在游戏自己的设置界面里（38 个开关在「游戏」页、热键在「输入」页），存在游戏的 `settings.json`，**不用** BepInEx 的 `.cfg`。完整表格（含每项的作用与默认值）见 [docs/新功能说明与设置.md](docs/新功能说明与设置.md)。
 
 几项最常用的：
 
@@ -99,6 +125,9 @@
 | `ocs.ui.consumption` / `ocs.ui.stacking` | 开 | C 键界面的消耗量提示 / 材料总览里相同材料合并成一行 |
 | `ocs.tip.container_totals` / `ocs.tip.container_weight` | 开 | Shift 悬停显示内容物与总重 |
 | `ocs.window.enabled` / `ocs.window.floor` | 开 | 材料总览窗口 / 是否包含 10 米内地面物品 |
+| `ocs.mp.enable` | 开 | 联机适配总开关（关掉后联机里完全退回 Together 原版行为） |
+| `ocs.mp.smart_pick` | 开 | 联机时仍按智能选材提交 |
+| `ocs.mp.host_store` | 开 | 主机按预测存放产物、消耗容器前抢救内容物 |
 
 ## 安装
 
@@ -107,20 +136,24 @@
 3. 启动游戏，日志里应出现：
 
 ```
-Loading [Optimised Crafting System 1.0.0]
-OptimisedCraftingSystem 1.0.0 已加载（Harmony 补丁已应用）。
+Loading [Optimised Crafting System 1.1.0]
+OptimisedCraftingSystem 1.1.0 已加载（Harmony 补丁已应用）。
 [Loc] 界面语言判定为 中文。
-[自检] 语言=中文 设置项=36 项 热键=M 字体=Microsoft YaHei
+[自检] 语言=中文 设置项=39 项 热键=M 字体=Microsoft YaHei
 [自检] 配方=278 个 物品类型=371 种 玩家=在场
+[自检] 联机：Together 5.2.0.0；当前单机（联机模组待机）；联机补丁：CraftCommit.MatchList=已挂，CraftCommit.TryClick=已挂，CraftCommit.Request=已挂，RecipeItem.GetMatchingItem=已挂，CraftCommit.HandleServer=已挂
 [自检] Recipe.GetItemsForRecipe ← 本模组：maple.optimisedcraftingsystem/prefix(p200)；其它模组：com.HerobrinesProsthetics/prefix(p400)
 ```
 
-（`[自检]` 会把 14 个目标方法逐条打印出来，是排查模组冲突最快的办法。若日志报「检测到旧模组」就说明第 2 步没做。）
+（`[自检]` 会把 14 个单机目标方法与联机补丁逐条打印出来，是排查模组冲突最快的办法。若日志报「检测到旧模组」就说明第 2 步没做。）
 
 ## 兼容性
 
 - 与 `QoL Unknown`、`Crafting Tweaks`、`CUCoreLib`、`prosthetics`、`Nutrition System`、`Hemopneumothorax`、`New Firearms` 及常见汉化包实测共存；本模组一律 `Priority.Low`，别人接管时让路。
 - 只有两处刻意不让：一个 `High` 后缀（必须最后收尾）、一个通知型前缀（与 `QoL Unknown` 争「恢复默认」，两者都能正常工作）。
+- 联机模组 `Casualties Together`（`CasualtiesMP`，记录时 5.2.0）：软依赖、反射探测、按它的合成提交流程挂钩，见上面的「联机适配」。
+  它与改同一条 `RecipeItem.GetMatchingItem` 的 `CraftingFramework` 也共存 —— 我们的联机引导前缀只在"正在提交一次联机合成"的极窄窗口内生效，
+  其余时刻（QoL 的够得着扫描、prosthetics 的钛合金合成、CraftingFramework 的自定义 id 匹配）看到的都是原版行为。
 
 ## 已知限制
 
@@ -130,6 +163,12 @@ OptimisedCraftingSystem 1.0.0 已加载（Harmony 补丁已应用）。
 - 若所有能用的瓶子都被收藏、临时瓶又关着，这部分液体会流失（合成前的预测行会说明去向）。
 - 被消耗容器的内容物装不进新容器时会掉在脚边，**不会自动帮你塞进背包**。
 - 另一个模组若整体接管了这次合成（例 `prosthetics` 的钛合金手），本模组的「需要」块不代表实际消耗。
+- **联机（Together）**：
+  - 客户端玩家的产物落点由主机决定，界面直接写「由主机决定」，不能改派；
+  - 客户端玩家合成时，被消耗容器的内容物救援与瓶内液体回收**只在主机上也装了本模组时才可能生效**，
+    且当前实现只对"主机玩家自己的合成"生效（远端玩家的合成按 Together 原版处理，内容物不救）；
+  - 联机里「装满东西的容器当材料」按原版拒绝（权威端会用原版规则再校验一次 ids）；
+  - 客户端指定"倒哪一层液体"不生效，一律按原版 stack 顺序。
 - IMGUI 面板依赖系统中文字体，一个都找不到时中文会显示成方框（`[自检]` 会打印实际拿到的字体名）。
 
 ## 从源码构建
@@ -137,6 +176,9 @@ OptimisedCraftingSystem 1.0.0 已加载（Harmony 补丁已应用）。
 ```powershell
 dotnet build src\OptimisedCraftingSystem.csproj -c Release -p:GameDir="D:\Steam\steamapps\common\Casualties Unknown Demo"
 ```
+
+（1.1.0 起本机走的是工作区工具链：`cu_build_project project=D:\maple_sword\CUagent-workspace\workspaces\OptimisedCraftingSystem\OptimisedCraftingSystem.csproj`，
+产物在 `bin\Release\netstandard2.1\OptimisedCraftingSystem.dll`，部署只走 `cu_deploy`。）
 
 目标框架 `netstandard2.1`；游戏程序集从 `$(GameDir)\CasualtiesUnknown_Data\Managed` 引用（`<Private>false</Private>`，**不随仓库分发**）；产物在 `src\bin\Release\netstandard2.1\OptimisedCraftingSystem.dll`。
 
